@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8"/>
+    <link rel="stylesheet" href="css/blueimp-gallery.min.css">
+    <link rel="stylesheet" href="octicons/build/font/octicons.css">
+    <style>
+
+    body {
+        font-family: ".SFNSDisplay-Regular", -apple-system, "Helvetica Neue", "Helvetica", "Segoe", "Calibri", sans-serif !important;
+        overflow: hidden;
+    }
+
+    a:link { color: #4f8bff; text-decoration: none; }
+    a:visited { color: #4f8bff; text-decoration: none; }
+    a:hover { color: #e3e3e3; text-decoration: none; }
+
+    #header {
+      position: absolute;
+      top: 0px;
+      left: 0px;
+      padding-top: 10px;
+      padding-left: 15px;
+      padding-right: 15px;
+      padding-bottom: 15px;
+      color: #fff;
+      display: block;
+      background-color: rgba(0, 0, 0, 0.667);
+      width: 100%;
+      font-weight: bolder;
+    }
+
+    #header > .title {
+      font-size: 1.75em;
+      padding-bottom: 5px !important;
+    }
+
+    #header > .title, #header > .description-parent, #header > .pdf-parent, #header > .external-parent {
+      margin: 0;
+      padding: 0;
+    }
+
+    </style>
+    <title>{{ title }}</title>
+  </head>
+  <body>
+    <h1>{{ title }}</h1>
+    <div id="blueimp-gallery" class="blueimp-gallery">
+      <div class="slides"></div>
+      <div id="header">
+        <h3 class="title"></h3>
+        <p class="description-parent"><span class="octicon octicon-info" style="font-size:larger;"></span> <span class="description"></span></p>
+        <p class="pdf-parent"><span class="octicon octicon-file-pdf" style="font-size:larger;"></span> <span class="pdf-href"></span></p>
+        <p class="external-parent"><span class="octicon octicon-link-external" style="font-size:larger;"></span> <span class="external-href"></span></p>
+      </div>
+      <a class="prev">‹</a>
+      <a class="next">›</a>
+      <a class="close">×</a>
+      <a class="play-pause"></a>
+      <ol class="indicator"></ol>
+    </div>
+    <div id="links">
+      {% set counter = 0 -%}
+      {% for image_url, thumbnail_url, pdf_url, external_url, image_title, image_description in image_data -%}
+      <a href="{{ image_url }}"
+         title="{{ image_title }}"
+         data-description="{{ image_description }}"
+         data-pdf-href="{{ pdf_url }}"
+         data-external-href="{{ external_url }}"
+         data-gallery="#blueimp-gallery-fullscreen"
+         class='blueimp-gallery-anchor'><img src="{{ thumbnail_url }}" alt="">
+      </a>
+      {% set counter = counter + 1 -%}
+      {% endfor -%}
+    </div>
+    <script src="js/blueimp-gallery.min.js"></script>
+    <script>
+
+function make_anchor(href, txt, target) {
+    var element = document.createElement("a");
+    element.href = href;
+    element.target = target;
+    element.innerHTML = txt;
+    return element;
+}
+
+document.getElementById('links').onclick = function (event) {
+    event = event || window.event;
+    var target = event.target || event.srcElement,
+        link = target.src ? target.parentNode : target,
+        options = {
+            index: link,
+            event: event,
+            onslide: function (index, slide) {
+                self = this;
+                var initialize_text = function (index, data, klass, self) {
+                    var text = self.list[index].getAttribute(data);
+                    var node = self.container.find(klass);
+                    node.empty();
+                    if (text) {
+                        node[0].appendChild(document.createTextNode(text));
+                    }
+                };
+                initialize_text(index, 'data-description', '.description', self);
+                var initialize_href = function (index, data, klass, self) {
+                    var href_fragment = self.list[index].getAttribute(data);
+                    var node = self.container.find(klass);
+                    node.empty();
+                    if (href_fragment) {
+                        node[0].appendChild(make_anchor(href_fragment, href_fragment, "_blank"));
+                    }                    
+                };
+                initialize_href(index, 'data-pdf-href', '.pdf-href', self);
+                initialize_href(index, 'data-external-href', '.external-href', self);
+            }
+        },
+        links = this.getElementsByTagName('a');
+    blueimp.Gallery(links, options);
+};
+
+document.getElementById("links").click();
+setTimeout(function() { document.getElementsByClassName("slide-content")[0].click(); }, 500);
+
+    </script>
+  </body>
+</html>
