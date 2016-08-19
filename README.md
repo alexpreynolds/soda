@@ -41,7 +41,9 @@ $ git clone https://github.com/alexpreynolds/soda.git
 
 ## Dependencies
 
-`soda.py` relies on Python 2.7 and up with [Beautiful Soup](https://pypi.python.org/pypi/beautifulsoup4) and [Jinja2](https://pypi.python.org/pypi/Jinja2), as well as binaries in [ImageMagick](http://www.imagemagick.org). Installing these dependencies may require administrator privileges. Please see the documentation for these components for installation instructions, or contact IT support for assistance.
+`soda.py` relies on Python 2.7 and up with [requests](https://pypi.python.org/pypi/requests/), [Beautiful Soup](https://pypi.python.org/pypi/beautifulsoup4) and [Jinja2](https://pypi.python.org/pypi/Jinja2), as well as binaries in [ImageMagick](http://www.imagemagick.org), which use [Ghostscript](http://www.ghostscript.com) to convert PDF to PNG. 
+
+Installing these dependencies may require administrator privileges. Please see the documentation for these components for installation instructions, or contact IT support for assistance.
 
 ## Usage
 
