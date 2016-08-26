@@ -5,6 +5,7 @@ Python-based UCSC genome browser snapshot gallery-maker
 - [Dependencies](#dependencies)
 - [Usage](#usage)
 - [Options](#options)
+- [Credit](#credit)
 
 ## Description
 
@@ -23,13 +24,13 @@ Additional options are available; please see the [Options](#options) section.
 
 ### Note
 
-Gallery snapshots are presented in the same order as rows in the input BED file. The BED file does not need to be in [BEDOPS `sort-bed`](http://bedops.readthedocs.io/en/latest/content/reference/file-management/sorting/sort-bed.html) order. In fact, it can be useful to order the regions in a BED file by some criteria other than genomic position, such as some numerical value stored in the BED file's score column, *e.g.*:
+The BED file does not need to be in BEDOPS `sort-bed` order. In fact, it can be useful to order the regions in a BED file by some criteria other than genomic position, such as some numerical value stored in the BED file's score column, *e.g.*:
 
 ```bash
 $ sort -k5,5n input.bed > input_sorted_by_scores.bed
 ```
 
-Any ordering is allowed.
+Any ordering is allowed. Gallery snapshots are presented in the same order as rows in the input BED file.
 
 ## Download
 
@@ -41,9 +42,16 @@ $ git clone https://github.com/alexpreynolds/soda.git
 
 ## Dependencies
 
-`soda.py` relies on Python 2.7 and up with [requests](https://pypi.python.org/pypi/requests/), [Beautiful Soup](https://pypi.python.org/pypi/beautifulsoup4) and [Jinja2](https://pypi.python.org/pypi/Jinja2), as well as binaries in [ImageMagick](http://www.imagemagick.org), which use [Ghostscript](http://www.ghostscript.com) to convert PDF to PNG. 
+You may need to use `pip` or similar to add Python libraries that may not be part of a typical environment:
 
-Installing these dependencies may require administrator privileges. Please see the documentation for these components for installation instructions, or contact IT support for assistance.
+* [requests](https://pypi.python.org/pypi/requests)
+* [Beautiful Soup](https://pypi.python.org/pypi/beautifulsoup4)
+* [Jinja2](https://pypi.python.org/pypi/Jinja2)
+* [pdfrw](https://pypi.python.org/pypi/pdfrw)
+
+It may be useful to use a package manager to add [ImageMagick](http://www.imagemagick.org) and [Ghostscript](http://www.ghostscript.com/), if not already installed.
+
+Installing these dependencies may also require administrator privileges. In this case, please see the documentation for these components for installation instructions, or contact your local IT support for assistance.
 
 ## Usage
 
@@ -63,6 +71,36 @@ which opens the gallery index in your default web browser.
 
 ## Options
 
+### Required
+
+Four options are required. At minimum:
+
+```bash
+-r, --regionsFn
+```
+
+Use `-r` or `--regionsFn` to specify the path to the input BED file containing regions of interest.
+
+```bash
+-b, --browserBuildID
+```
+
+The `-b` or `--browserBuildID` option specifies the genome build, *e.g.*, `hg19`, `mm10`, etc.
+
+```bash
+-s, --browserSessionID
+```
+
+The `-s` or `--browserSessionID` option specify the browser session ID, which references a configuration of tracks and display parameters from a genome browser instance.
+
+```bash
+-o, --outputDir
+```
+
+Use the `-o` or `--outputDir` option to specify where the image gallery is saved. If this path already exists, `soda.py` will exit with a fatal error message.
+
+### Optional
+
 Other options are available depending on how you want to customize the run.
 
 ```bash
@@ -70,6 +108,20 @@ Other options are available depending on how you want to customize the run.
 ```
 
 Use `-t` or `--title` to specify a gallery title.
+
+```bash
+[ -i, --addIntervalAnnotation | -d, --addMidpointAnnotation ]
+```
+
+Use `-i` or `--addIntervalAnnotation` to add a rectangle underneath all tracks that demarcates the original genomic range (useful when used with `--range`). Alternatively, use `-d` or `--addMidpointAnnotation` to add a vertical line underneath all tracks, centered on the midpoint of the input genomic range. In both cases, the annotation is labeled with the genomic coordinates of the original interval or the calculated midpoint, respectively. It is not allowed to specify both options together.
+
+```bash
+-w, --annotationRgba
+-z, --annotationFontPointSize
+-f, --annotationFontFamily
+```
+
+When used with `-i` or `-d` to add an interval or midpoint annotation, these options may be used to override the default [`rgba()` color](http://www.w3schools.com/cssref/css_colors_legal.asp), typeface point size, and typeface family (where supported by the local installation of ImageMagick), which are parameters used to render the appearance of the annotation components. The default color is `rgba(255, 0, 0, 0.333)` and the default point size and font family values are `5` and `Helvetica-Bold`, respectively. 
 
 ```bash
 -a, --range
@@ -95,3 +147,7 @@ Use these two options to specify a username and password for the browser instanc
 ```
 
 Use `-v` or `--verbose` to print debug messages, which may be useful for automation or debugging.
+
+## Credit
+
+Authored in various `bash`- and Perl-flavored incarnations since 2008 by Bob Thurman, Richard Sandstrom, Scott Kuehn, Jay Hesselberth, Richard Humbert, Brady Miller and Alex Reynolds. Python rewrite was authored by Alex Reynolds.

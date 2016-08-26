@@ -16,6 +16,9 @@ You provide the script with four parameters:
   are specific to your session. 
 * Where you want to store the gallery end-product.
 
+Additional options are available. Run with --help for more information or read 
+the Options section of the README at: https://github.com/alexpreynolds/soda#options
+
 """
 
 import sys
@@ -30,12 +33,18 @@ import bs4
 import re
 import subprocess
 import jinja2
+import pdfrw
 
 default_title = "My Gallery"
 default_genome_browser_url = "https://genome.ucsc.edu"
 default_genome_browser_username = None
 default_genome_browser_password = None
 default_verbosity = False
+default_midpoint_annotation = False
+default_interval_annotation = False
+default_annotation_rgba = "rgba(255, 0, 0, 0.333)" # i.e., full red with 33% opacity
+default_annotation_font_size = "5"
+default_annotation_font_family = "Helvetica-Bold"
 
 parser = optparse.OptionParser()
 parser.add_option("-r", "--regionsFn", action="store", type="string", dest="regionsFn", help="Path to BED-formatted regions of interest (required)")
@@ -46,10 +55,16 @@ parser.add_option("-t", "--galleryTitle", action="store", type="string", dest="g
 parser.add_option("-g", "--browserURL", action="store", type="string", dest="browserURL", default=default_genome_browser_url, help="Genome browser URL (optional)")
 parser.add_option("-u", "--browserUsername", action="store", type="string", dest="browserUsername", default=default_genome_browser_username, help="Genome browser username (optional)")
 parser.add_option("-p", "--browserPassword", action="store", type="string", dest="browserPassword", default=default_genome_browser_password, help="Genome browser password (optional)")
+parser.add_option("-d", "--addMidpointAnnotation", action="store_true", dest="midpointAnnotation", default=default_midpoint_annotation, help="Add midpoint annotation underneath tracks (optional)")
+parser.add_option("-i", "--addIntervalAnnotation", action="store_true", dest="intervalAnnotation", default=default_interval_annotation, help="Add interval annotation underneath tracks (optional)")
+parser.add_option("-w", "--annotationRgba", action="store", type="string", dest="annotationRgba", default=default_annotation_rgba, help="Annotation 'rgba(r,g,b,a)' color string (optional)")
+parser.add_option("-z", "--annotationFontPointSize", action="store", type="string", dest="annotationFontPointSize", default=default_annotation_font_size, help="Annotation font point size (optional)")
+parser.add_option("-f", "--annotationFontFamily", action="store", type="string", dest="annotationFontFamily", default=default_annotation_font_family, help="Annotation font family (optional)")
 parser.add_option("-a", "--range", action="store", type="int", dest="rangePadding", help="Add or remove symmetrical padding to input regions (optional)")
 parser.add_option("-l", "--gallerySrcDir", action="store", type="string", dest="gallerySrcDir", help="Blueimp Gallery resources directory (optional)")
 parser.add_option("-c", "--octiconsSrcDir", action="store", type="string", dest="octiconsSrcDir", help="Github Octicons resources directory (optional)")
 parser.add_option("-k", "--convertBinFn", action="store", type="string", dest="convertBinFn", help="ImageMagick convert binary path (optional)")
+parser.add_option("-n", "--identifyBinFn", action="store", type="string", dest="identifyBinFn", help="ImageMagick identify binary path (optional)")
 parser.add_option("-v", "--verbose", action="store_true", dest="verbose", default=default_verbosity, help="Print debug messages to stderr (optional)")
 (options, args) = parser.parse_args()
 
@@ -88,9 +103,47 @@ class Soda:
         self.region_objs = []
         self.range_padding = None
         self.convert_bin_fn = None
+        self.identify_bin_fn = None
         self.output_png_resolution = 600
         self.output_png_thumbnail_width = 480
         self.output_png_thumbnail_height = 480
+        self.midpoint_annotation = default_midpoint_annotation
+        self.interval_annotation = default_interval_annotation
+        self.annotation_rgba = default_annotation_rgba
+        self.annotation_font_family = default_annotation_font_family
+        self.track_label_column_width = None
+
+    def setup_midpoint_annotation(this, midpointAnnotation, debug):
+        this.midpoint_annotation = midpointAnnotation
+        if debug:
+            if this.midpoint_annotation:
+                sys.stderr.write("Debug: Midpoint annotation enabled\n")
+            else:
+                sys.stderr.write("Debug: Midpoint annotation disabled\n")
+
+    def setup_interval_annotation(this, intervalAnnotation, debug):
+        this.interval_annotation = intervalAnnotation
+        if debug:
+            if this.interval_annotation:
+                sys.stderr.write("Debug: Interval annotation enabled\n")
+            else:
+                sys.stderr.write("Debug: Interval annotation disabled\n")
+
+    def setup_annotation_rgba(this, annotationRgba, debug):
+        this.annotation_rgba = annotationRgba
+        if debug:
+            sys.stderr.write("Debug: Annotation RGBA color string set to [%s]\n" % (this.annotation_rgba))
+
+    def setup_annotation_font_point_size(this, annotationFontPointSize, debug):
+        this.annotation_font_point_size = annotationFontPointSize
+        if debug:
+            sys.stderr.write("Debug: Annotation font point size string set to [%s]\n" % (this.annotation_font_point_size))
+
+    def setup_annotation_font_family(this, annotationFontFamily, debug):
+        this.annotation_font_family = annotationFontFamily
+        if debug:
+            sys.stderr.write("Debug: Annotation font family set to [%s]\n" % (this.annotation_font_family))
+
 
     def setup_range_padding(this, rangePadding, debug):
         this.range_padding = rangePadding
@@ -187,6 +240,28 @@ class Soda:
                     return os.path.join(root, convertBinName)
         return None
 
+    def ensure_identify_bin_fn(this, identifyBinFn, debug):
+        if not identifyBinFn:
+            sys.stderr.write("Error: ImageMagick identify binary not found\n\n")
+            usage(-1)
+        elif not os.path.exists(identifyBinFn):
+            sys.stderr.write("Error: ImageMagick identify binary path [%s] is not accessible\n\n" % (identifyBinFn))
+            usage(-1)
+        else:
+            this.identify_bin_fn = identifyBinFn
+            if debug:
+                sys.stderr.write("Debug: Identify binary path exists [%s]\n" % (this.identify_bin_fn))
+
+    def find_identify_bin_fn_in_environment_path(this, debug):
+        identifyBinName = 'identify'
+        env = os.environ.copy()
+        paths_to_search = env['PATH'].split(":")
+        for path in paths_to_search:
+            for root, dirs, files in os.walk(path):
+                if identifyBinName in files:
+                    return os.path.join(root, identifyBinName)
+        return None
+
     def copy_regions_to_temp_regions_dir(this, debug):
         this.temp_regions_fn = os.path.join(this.temp_regions_results_dir, os.path.basename(this.original_regions_fn))
         shutil.copyfile(this.original_regions_fn, this.temp_regions_fn)
@@ -211,8 +286,8 @@ class Soda:
                     try:
                         region_elements[1] = str(int(region_elements[1]) - this.range_padding)
                         region_elements[2] = str(int(region_elements[2]) + this.range_padding)
-                        if region_elements[1] < 0:
-                            region_elements[1] = 0
+                        if int(region_elements[1]) < 0:
+                            region_elements[1] = "0"
                     except IndexError as ie:
                         sys.stderr.write("Error: Region elements are [%d | %s]\n" % (len(region_elements), region_elements))
                         sys.exit(-1)
@@ -274,6 +349,63 @@ class Soda:
         if debug:
             sys.stderr.write("Debug: Browser session ID set to [%s]\n" % (this.browser_session_id))
 
+    def setup_track_label_column_width(this, textSize, labelWidth, debug):
+        """
+        * multiplicative factors were derived approximately from measuring PDFs 
+          rendered from combinations of various text size and label width settings
+
+        * text size is guaranteed to be one of the following values per UCSC support:
+          cf. https://groups.google.com/a/soe.ucsc.edu/d/msg/genome/TNnukmFSiVI/pimG80jQBAAJ
+        """
+        if textSize == 6 or textSize == 8 or textSize == 10:
+            if labelWidth <= 20:
+                this.track_label_column_width = float(labelWidth) * 3.16
+            elif labelWidth >= 21 and labelWidth <= 45:
+                this.track_label_column_width = float(labelWidth) * 2.95
+            elif labelWidth > 45:
+                this.track_label_column_width = float(labelWidth) * 2.83
+        elif textSize == 12:
+            if labelWidth <= 30:
+                this.track_label_column_width = float(labelWidth) * 3.45
+            elif labelWidth >= 31 and labelWidth <= 45:
+                this.track_label_column_width = float(labelWidth) * 3.32
+            elif labelWidth >= 46:
+                this.track_label_column_width = float(labelWidth) * 3.28
+        elif textSize == 14:
+            if labelWidth <= 30:
+                this.track_label_column_width = float(labelWidth) * 3.85
+            elif labelWidth >= 31 and labelWidth <= 45:
+                this.track_label_column_width = float(labelWidth) * 3.78
+            elif labelWidth >= 46:
+                this.track_label_column_width = float(labelWidth) * 3.74
+        elif textSize == 18:
+            if labelWidth <= 30:
+                this.track_label_column_width = float(labelWidth) * 4.76
+            elif labelWidth >= 31 and labelWidth <= 45:
+                this.track_label_column_width = float(labelWidth) * 4.69
+            elif labelWidth >= 46:
+                this.track_label_column_width = float(labelWidth) * 4.47
+        elif textSize == 24:
+            if labelWidth <= 30:
+                this.track_label_column_width = float(labelWidth) * 6.58
+            elif labelWidth >= 31 and labelWidth <= 45:
+                this.track_label_column_width = float(labelWidth) * 5.94
+            elif labelWidth >= 46:
+                this.track_label_column_width = float(labelWidth) * 4.45
+        elif textSize == 34:
+            if labelWidth <= 30:
+                this.track_label_column_width = float(labelWidth) * 8.39
+            elif labelWidth >= 31 and labelWidth <= 45:
+                this.track_label_column_width = float(labelWidth) * 6.00
+            elif labelWidth >= 46:
+                this.track_label_column_width = float(labelWidth) * 4.50
+
+        # shift offset one pixel from the left edge border
+        this.track_label_column_width = this.track_label_column_width - 1
+        
+        if debug:
+            sys.stderr.write("Debug: Track label column width set to [%d] pixels\n" % (this.track_label_column_width))
+
     def generate_pdfs_from_annotated_regions(this, debug):
         with open(this.temp_annotated_regions_fn, "r") as temp_annotated_regions_fh:
             for region_line in temp_annotated_regions_fh:
@@ -309,12 +441,29 @@ class Soda:
             auth = browser_credentials,
             verify = False,
         )
-        # write response text to cartDump in temporary output folder
+        # get cart dump
         browser_cartdump_response_content = browser_cartdump_response.content
+        browser_cartdump_textSize = None # textSize
+        browser_cartdump_hgt_labelWidth = None # hgt.labelWidth
+        browser_cartdump_lines = browser_cartdump_response_content.decode().split('\n')
+        for browser_cartdump_line in browser_cartdump_lines:
+            try:
+                browser_cartdump_line_values = browser_cartdump_line.rstrip().split(' ')
+            except ValueError as ve:
+                sys.stderr.write("Error: Could not parse cartDump response [%s]" % (browser_cartdump_response_content))
+                sys.exit(-1)
+            if browser_cartdump_line_values[0] == 'textSize':
+                browser_cartdump_textSize = browser_cartdump_line_values[1]
+            elif browser_cartdump_line_values[0] == 'hgt.labelWidth':
+                browser_cartdump_hgt_labelWidth = browser_cartdump_line_values[1]
+        if debug:
+            sys.stderr.write("Debug: Cart dump textSize and hgt.labelWidth are: [%s] and [%s]\n" % (browser_cartdump_textSize, browser_cartdump_hgt_labelWidth))
+        this.setup_track_label_column_width(int(browser_cartdump_textSize), int(browser_cartdump_hgt_labelWidth), debug)
+        # write response text to cartDump in temporary output folder
         cart_dump_fn = os.path.join(this.temp_pdf_results_dir, 'cartDump')
         if debug:
             sys.stderr.write("Debug: Writing cart dump response content to [%s]\n" % (cart_dump_fn))
-        cart_dump_fh = open(cart_dump_fn, "w")
+        cart_dump_fh = open(cart_dump_fn, "wb")
         cart_dump_fh.write(browser_cartdump_response_content)
         cart_dump_fh.close()
         # ensure cartDump exists
@@ -360,6 +509,122 @@ class Soda:
             sys.stderr.write("Debug: Wrote PDF file [%s]\n" % (browser_pdf_local_fn))
         # remove cartDump file
         os.remove(cart_dump_fn)
+        if this.midpoint_annotation or this.interval_annotation:
+            this.generate_pdf_with_annotation(browser_pdf_local_fn, region_obj, debug)
+
+    def generate_pdf_with_annotation(this, browser_pdf_local_fn, region_obj, debug):
+        # get dimensions of browser PDF with 'identify'
+        identify_width_cmd = '%s -ping -format \'%%w\' %s' % (this.identify_bin_fn, browser_pdf_local_fn)
+        try:
+            browser_pdf_width = subprocess.check_output(identify_width_cmd, shell = True)
+        except subprocess.CalledProcessError as err:
+            identify_width_result = "Error: Command '{}' returned with error (code {}): {}".format(err.cmd, err.returncode, err.output)
+            sys.stderr.write("%s\n" % (identify_width_result))
+            sys.exit(-1)
+        if debug:
+            sys.stderr.write("Debug: PDF width [%s]\n" % (browser_pdf_width))
+        identify_height_cmd = '%s -ping -format \'%%h\' %s' % (this.identify_bin_fn, browser_pdf_local_fn)
+        try:
+            browser_pdf_height = subprocess.check_output(identify_height_cmd, shell = True)
+        except subprocess.CalledProcessError as err:
+            identify_height_result = "Error: Command '{}' returned with error (code {}): {}".format(err.cmd, err.returncode, err.output)
+            sys.stderr.write("%s\n" % (identify_height_result))
+            sys.exit(-1)
+        if debug:
+            sys.stderr.write("Debug: PDF height [%s]\n" % (browser_pdf_height))
+        # make blank SVG with similar dimensions (same width, but taller)
+        top_padding = 20
+        leftmost_column_width = this.track_label_column_width
+        track_column_width = int(browser_pdf_width) - leftmost_column_width
+        svg = '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="%d" height="%d" viewBox="0 0 %d %d">' % (int(browser_pdf_width), int(browser_pdf_height) + top_padding, int(browser_pdf_width), int(browser_pdf_height) + top_padding)
+        if this.midpoint_annotation:
+            # draw <line> on SVG
+            svg_line_x1 = leftmost_column_width + (track_column_width / 2.0)
+            svg_line_x2 = svg_line_x1
+            svg_line_y1 = 0 
+            svg_line_y2 = int(browser_pdf_height) + top_padding
+            svg_line_stroke = this.annotation_rgba
+            svg_line_stroke_width = '0.25'
+            svg_line_fill = 'none'
+            svg = svg + '<line x1="%d" y1="%d" x2="%d" y2="%d" style="stroke:%s;stroke-width:%s;fill:%s;" />' % (svg_line_x1, svg_line_y1, svg_line_x2, svg_line_y2, svg_line_stroke, svg_line_stroke_width, svg_line_fill)
+            # draw <text> on SVG
+            svg_text_chr = region_obj['chrom']
+            svg_text_start = int(region_obj['start']) + int((int(region_obj['stop']) - int(region_obj['start'])) / 2)
+            svg_text_stop = svg_text_start + 1
+            svg_text = '%s:%d-%d' % (svg_text_chr, svg_text_start, svg_text_stop)
+            svg_text_x = svg_line_x1 + 3
+            svg_text_y = 8
+            svg_text_fill = svg_line_stroke
+            svg_text_font_family = this.annotation_font_family
+            svg_text_font_size = this.annotation_font_point_size
+            svg = svg + '<text x="%d" y="%d" style="font-family:%s;fill:%s;font-size:%s">%s</text>' % (svg_text_x, svg_text_y, svg_text_font_family, svg_text_fill, svg_text_font_size, svg_text)
+        elif this.interval_annotation:
+            # draw <rect> element on SVG
+            full_start = int(region_obj['start'])
+            full_stop = int(region_obj['stop'])
+            if this.range_padding:
+                adj_start = full_start + this.range_padding
+                adj_stop = full_stop - this.range_padding
+                adj_ratio = float(adj_stop - adj_start) / float(full_stop - full_start) # fraction of annotated range that represents pre-range interval
+            else:
+                adj_start = full_start
+                adj_stop = full_stop
+                adj_ratio = 1.0
+            adj_track_column_width = int(track_column_width * adj_ratio)
+            adj_track_width_difference = track_column_width - adj_track_column_width
+            adj_track_x_offset = int(float(adj_track_width_difference) / 2.0)
+            adj_track_column_height = int(browser_pdf_height) + top_padding
+            svg_rect_x = leftmost_column_width + adj_track_x_offset
+            svg_rect_y = 0
+            svg_rect_width = adj_track_column_width
+            svg_rect_height = adj_track_column_height
+            svg_rect_fill = this.annotation_rgba
+            svg_rect_stroke = svg_rect_fill
+            svg_rect_stroke_width = '0'
+            svg = svg + '<rect x="%d" y="%d" width="%d" height="%d" style="fill:%s;stroke-width:%s;stroke:%s" />' % (svg_rect_x, svg_rect_y, svg_rect_width, svg_rect_height, svg_rect_fill, svg_rect_stroke_width, svg_rect_stroke)
+            # draw <text> on SVG
+            svg_text_chr = region_obj['chrom']
+            svg_text = '%s:%d-%d' % (svg_text_chr, adj_start, adj_stop)
+            svg_text_x = leftmost_column_width + (track_column_width / 2.0)
+            svg_text_y = 8
+            svg_text_fill = 'rgba(0,0,0,1)'
+            svg_text_font_family = this.annotation_font_family
+            svg_text_font_size = this.annotation_font_point_size
+            svg_text_anchor = "middle"
+            svg = svg + '<text x="%d" y="%d" text-anchor="%s" style="font-family:%s;fill:%s;font-size:%s">%s</text>' % (svg_text_x, svg_text_y, svg_text_anchor, svg_text_font_family, svg_text_fill, svg_text_font_size, svg_text)
+        svg = svg + '</svg>'
+        # write SVG to text file
+        svg_local_fn = os.path.join(this.temp_pdf_results_dir, 'watermark.svg')
+        with open(svg_local_fn, 'wb') as svg_local_fh:
+            svg_local_fh.write(svg.encode())
+        if debug:
+            sys.stderr.write("Debug: Written SVG watermark to [%s]\n" % (svg_local_fn))
+        # `convert` SVG to PDF with high density
+        svg_as_pdf_local_fn = os.path.join(this.temp_pdf_results_dir, 'watermark.pdf')
+        convert_cmd = '%s -density %d %s -background white -flatten %s' % (this.convert_bin_fn, this.output_png_resolution, svg_local_fn, svg_as_pdf_local_fn)
+        try:
+            convert_result = subprocess.check_output(convert_cmd, shell = True)
+        except subprocess.CalledProcessError as err:
+            convert_result = "Error: Command '{}' returned with error (code {}): {}".format(err.cmd, err.returncode, err.output)
+            sys.stderr.write("%s\n" % (convert_result))
+            sys.exit(-1)
+        if debug:
+            sys.stderr.write("Debug: Converted SVG watermark to PDF\n")
+        # watermark the SVG with the browser PDF, using pdfrw library
+        watermarked_browser_pdf_local_fn = browser_pdf_local_fn + '.watermarked'
+        browser_pdfrw_obj = pdfrw.PageMerge().add(pdfrw.PdfReader(browser_pdf_local_fn).pages[0])[0]
+        svg_pdfrw_obj = pdfrw.PdfReader(svg_as_pdf_local_fn)
+        for page in svg_pdfrw_obj.pages:
+            pdfrw.PageMerge(page).add(browser_pdfrw_obj, prepend=False).render()
+        pdfrw.PdfWriter().write(watermarked_browser_pdf_local_fn, svg_pdfrw_obj)
+        if debug:
+            sys.stderr.write("Debug: Merged SVG watermark with browser PDF\n")
+        # copy watermarked_browser_pdf_local_fn to browser_pdf_local_fn
+        shutil.copyfile(watermarked_browser_pdf_local_fn, browser_pdf_local_fn)
+        # remove temporary files
+        os.remove(svg_local_fn)
+        os.remove(svg_as_pdf_local_fn)
+        os.remove(watermarked_browser_pdf_local_fn)
 
     def generate_pngs_from_pdfs(this, debug):
         for region_id in this.region_ids:
@@ -521,7 +786,7 @@ class Soda:
             'title' : this.gallery_title,
             'image_data' : zip(image_urls, thumbnail_urls, pdf_urls, external_urls, titles, descriptions)
         }
-        with open(gallery_index_fn, "w") as gallery_index_fh:
+        with open(gallery_index_fn, "wb") as gallery_index_fh:
             html = template_environment.get_template(template_fn).render(render_context).encode('utf-8')
             gallery_index_fh.write(html)
         if debug:
@@ -540,6 +805,14 @@ def main():
     if not options.browserBuildID:
         sys.stderr.write("Error: Please specify an genome build ID (hg19, hg38, mm10, etc.)\n\n")
         usage(-1)
+    if options.midpointAnnotation and options.intervalAnnotation:
+        sys.stderr.write("Error: Please specify only one of midpoint or interval annotation flags\n\n")
+        usage(-1)
+    s.setup_midpoint_annotation(options.midpointAnnotation, options.verbose)
+    s.setup_interval_annotation(options.intervalAnnotation, options.verbose)
+    s.setup_annotation_rgba(options.annotationRgba, options.verbose)
+    s.setup_annotation_font_point_size(options.annotationFontPointSize, options.verbose)
+    s.setup_annotation_font_family(options.annotationFontFamily, options.verbose)
     if options.rangePadding:
         s.setup_range_padding(options.rangePadding, options.verbose)
     s.setup_output_dir(options.outputDir, options.verbose)
@@ -553,6 +826,9 @@ def main():
     if not options.convertBinFn:
         options.convertBinFn = s.find_convert_bin_fn_in_environment_path(options.verbose)
     s.ensure_convert_bin_fn(options.convertBinFn, options.verbose)
+    if not options.identifyBinFn:
+        options.identifyBinFn = s.find_identify_bin_fn_in_environment_path(options.verbose)
+    s.ensure_identify_bin_fn(options.identifyBinFn, options.verbose)
     s.setup_temp_dirs(options.verbose)
     s.copy_regions_to_temp_regions_dir(options.verbose)
     s.annotate_temp_regions_with_custom_id(options.verbose)
