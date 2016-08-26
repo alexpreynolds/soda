@@ -133,7 +133,7 @@ Use the `-a` or `--range` option to pad the BED input symmetrically by the speci
 -g, --browserURL
 ```
 
-Use the `-g` or `--browserURL` option to specify a different genome browser URL other than the USCS genome browser. If a different host is specified and credentials are required, please use the `-u` and `-p` options (see below).
+Use the `-g` or `--browserURL` option to specify a different genome browser URL other than the UCSC genome browser. If a different host is specified and credentials are required, please use the `-u` and `-p` options (see below).
 
 ```bash
 -u, --browserUsername
