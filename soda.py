@@ -44,7 +44,7 @@ default_midpoint_annotation = False
 default_interval_annotation = False
 default_annotation_rgba = "rgba(255, 0, 0, 0.333)" # i.e., full red with 33% opacity
 default_annotation_font_size = "5"
-default_annotation_font_family = "Helvetica-Bold"
+default_annotation_font_family = "Helvetica"
 
 parser = optparse.OptionParser()
 parser.add_option("-r", "--regionsFn", action="store", type="string", dest="regionsFn", help="Path to BED-formatted regions of interest (required)")
@@ -471,8 +471,12 @@ class Soda:
             sys.stderr.write("Error: Could not write cart dump data to [%s]\n" % (cart_dump_fn))
             sys.exit(-1)
         # get PDF URL
+        encoded_browser_position_str = region_obj['chrom'] + "%3A" + str(region_obj['start']) + "%2D" + str(region_obj['stop'])
+        modified_browser_pdf_url = this.browser_pdf_url + "&position=" + encoded_browser_position_str
+        if debug:
+            sys.stderr.write("Debug: Requesting PDF via: [%s]\n" % (modified_browser_pdf_url))
         browser_pdf_url_response = requests.get(
-            url = this.browser_pdf_url,
+            url = modified_browser_pdf_url,
             auth = browser_credentials,
             verify = False
         )
