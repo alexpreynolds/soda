@@ -5,7 +5,7 @@ Python-based UCSC genome browser snapshot gallery-maker
 - [Dependencies](#dependencies)
 - [Usage](#usage)
 - [Options](#options)
-- [Credit](#credit)
+- [Credits](#credits)
 
 ## Description
 
@@ -133,7 +133,7 @@ Use the `-a` or `--range` option to pad the BED input's **midpoint** symmetrical
 -g, --browserURL
 ```
 
-Use the `-g` or `--browserURL` option to specify a different genome browser URL other than the USCS genome browser. If a different host is specified and credentials are required, please use the `-u` and `-p` options (see below).
+Use the `-g` or `--browserURL` option to specify a different genome browser URL other than the UCSC genome browser. If a different host is specified and credentials are required, please use the `-u` and `-p` options (see below).
 
 ```bash
 -u, --browserUsername
@@ -143,11 +143,17 @@ Use the `-g` or `--browserURL` option to specify a different genome browser URL 
 Use these two options to specify a username and password for the browser instance, if you pick a different `--browserURL` and that browser instance requires basic credentials. If these options are not specified, no credentials are passed along. If authentication is required and it fails, `soda.py` may exit with an error.
 
 ```bash
+-y, --useKerberosAuthentication
+```
+
+Use this option if access to your custom browser instance requires a Kerberos ticket (obtained via ``kinit``, for example).
+
+```bash
 -v, --verbose
 ```
 
 Use `-v` or `--verbose` to print debug messages, which may be useful for automation or debugging.
 
-## Credit
+## Credits
 
 Authored in various `bash`- and Perl-flavored incarnations since 2008 by Bob Thurman, Richard Sandstrom, Scott Kuehn, Jay Hesselberth, Richard Humbert, Brady Miller and Alex Reynolds. Python rewrite was authored by Alex Reynolds.

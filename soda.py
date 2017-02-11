@@ -54,6 +54,8 @@ default_output_png_thumbnail_height = 480
 default_annotation_resolution = default_output_png_resolution
 default_ucsc_browser_label_area_width = 17
 default_ucsc_browser_text_size = 8
+default_annotation_font_size = "5"
+default_annotation_font_family = "Helvetica"
 
 parser = optparse.OptionParser()
 parser.add_option("-r", "--regionsFn", action="store", type="string", dest="regionsFn", help="Path to BED-formatted regions of interest (required)")
@@ -64,7 +66,7 @@ parser.add_option("-t", "--galleryTitle", action="store", type="string", dest="g
 parser.add_option("-g", "--browserURL", action="store", type="string", dest="browserURL", default=default_genome_browser_url, help="Genome browser URL (optional)")
 parser.add_option("-u", "--browserUsername", action="store", type="string", dest="browserUsername", default=default_genome_browser_username, help="Genome browser username (optional)")
 parser.add_option("-p", "--browserPassword", action="store", type="string", dest="browserPassword", default=default_genome_browser_password, help="Genome browser password (optional)")
-parser.add_option("-y", "--useKerberos", action="store_true", dest="useKerberosAuthentication", default=default_use_kerberos_authentication, help="Use Kerberos authentication (optional)")
+parser.add_option("-y", "--useKerberosAuthentication", action="store_true", dest="useKerberosAuthentication", default=default_use_kerberos_authentication, help="Use Kerberos authentication (optional)")
 parser.add_option("-d", "--addMidpointAnnotation", action="store_true", dest="midpointAnnotation", default=default_midpoint_annotation, help="Add midpoint annotation underneath tracks (optional)")
 parser.add_option("-i", "--addIntervalAnnotation", action="store_true", dest="intervalAnnotation", default=default_interval_annotation, help="Add interval annotation underneath tracks (optional)")
 parser.add_option("-w", "--annotationRgba", action="store", type="string", dest="annotationRgba", default=default_annotation_rgba, help="Annotation 'rgba(r,g,b,a)' color string (optional)")
@@ -356,10 +358,11 @@ class Soda:
             this.browser_session_basic_credentials = True
             this.browser_session_kerberos_credentials = False
         if useKerberosCredentials:
+            this.browser_session_basic_credentials = False
             this.browser_session_kerberos_credentials = True
         if debug:
-            sys.stderr.write("Debug: Basic credentials enabled [%r]\n" % (this.browser_session_basic_credentials))
-            sys.stderr.write("Debug: Kerberos credentials enabled [%r]\n" % (this.browser_session_kerberos_credentials))
+            sys.stderr.write("Debug: Basic credentials set to [%r]\n" % (this.browser_session_basic_credentials))
+            sys.stderr.write("Debug: Kerberos credentials set to [%r]\n" % (this.browser_session_kerberos_credentials))
 
     def setup_browser_build_id(this, browserBuildID, debug):
         this.browser_build_id = browserBuildID
@@ -463,6 +466,7 @@ class Soda:
             sys.stderr.write("Error: Could not write cart dump data to [%s]\n" % (cart_dump_fn))
             sys.exit(-1)
         # get PDF URL
+<<<<<<< HEAD
         encoded_browser_position_str = region_obj['chrom'] + "%3A" + str(region_obj['start']) + "%2D" + str(region_obj['stop'])        
         modified_browser_pdf_url = this.browser_pdf_url + "&position=" + encoded_browser_position_str
         if debug:
@@ -476,6 +480,17 @@ class Soda:
         except requests.exceptions.ChunkedEncodingError as err:
             sys.stderr.write("Warning: Could not retrieve PDF for region [%s]\n" % (encoded_browser_position_str))
             return
+=======
+        encoded_browser_position_str = region_obj['chrom'] + "%3A" + str(region_obj['start']) + "%2D" + str(region_obj['stop'])
+        modified_browser_pdf_url = this.browser_pdf_url + "&position=" + encoded_browser_position_str
+        if debug:
+            sys.stderr.write("Debug: Requesting PDF via: [%s]\n" % (modified_browser_pdf_url))
+        browser_pdf_url_response = requests.get(
+            url = modified_browser_pdf_url,
+            auth = browser_credentials,
+            verify = False
+        )
+>>>>>>> ba10dd4852850684730297cc16629098d04aa8f2
         browser_pdf_url_soup = bs4.BeautifulSoup(browser_pdf_url_response.text, "html.parser")
         browser_pdf_url_soup_hrefs = []
         for anchor in browser_pdf_url_soup.find_all('a'):
