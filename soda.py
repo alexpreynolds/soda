@@ -3,9 +3,8 @@
 """soda.py
 
 soda.py is a Python script that generates a gallery of images made from snapshots 
-from a UCSC genome browser instance, so-called "soda plots". Snapshots are sourced 
-from the main UCSC browser instance, but another instance can be used, if the host
-name is specified.
+from a UCSC genome browser instance, so-called "soda plots". Snapshots could be 
+derived from any other UCSC browser instance, if its URL is specified.
 
 You provide the script with four parameters:
 
@@ -26,6 +25,8 @@ import os
 import tempfile
 import shutil
 import requests
+import requests_kerberos
+import certifi
 import optparse
 import urllib
 import json
@@ -34,17 +35,25 @@ import re
 import subprocess
 import jinja2
 import pdfrw
+import ucsc_pdf_bbox_parser
 
-default_title = "My Gallery"
-default_genome_browser_url = "https://genome.ucsc.edu"
+default_title = "Soda Gallery"
+default_genome_browser_url = "http://genome.ucsc.edu"
 default_genome_browser_username = None
 default_genome_browser_password = None
 default_verbosity = False
+default_use_kerberos_authentication = False
 default_midpoint_annotation = False
 default_interval_annotation = False
 default_annotation_rgba = "rgba(255, 0, 0, 0.333)" # i.e., full red with 33% opacity
-default_annotation_font_size = "5"
-default_annotation_font_family = "Helvetica-Bold"
+default_annotation_font_size = "5.5"
+default_annotation_font_family = "Helvetica"
+default_output_png_resolution = 150
+default_output_png_thumbnail_width = 480
+default_output_png_thumbnail_height = 480
+default_annotation_resolution = default_output_png_resolution
+default_ucsc_browser_label_area_width = 17
+default_ucsc_browser_text_size = 8
 
 parser = optparse.OptionParser()
 parser.add_option("-r", "--regionsFn", action="store", type="string", dest="regionsFn", help="Path to BED-formatted regions of interest (required)")
@@ -55,11 +64,14 @@ parser.add_option("-t", "--galleryTitle", action="store", type="string", dest="g
 parser.add_option("-g", "--browserURL", action="store", type="string", dest="browserURL", default=default_genome_browser_url, help="Genome browser URL (optional)")
 parser.add_option("-u", "--browserUsername", action="store", type="string", dest="browserUsername", default=default_genome_browser_username, help="Genome browser username (optional)")
 parser.add_option("-p", "--browserPassword", action="store", type="string", dest="browserPassword", default=default_genome_browser_password, help="Genome browser password (optional)")
+parser.add_option("-y", "--useKerberos", action="store_true", dest="useKerberosAuthentication", default=default_use_kerberos_authentication, help="Use Kerberos authentication (optional)")
 parser.add_option("-d", "--addMidpointAnnotation", action="store_true", dest="midpointAnnotation", default=default_midpoint_annotation, help="Add midpoint annotation underneath tracks (optional)")
 parser.add_option("-i", "--addIntervalAnnotation", action="store_true", dest="intervalAnnotation", default=default_interval_annotation, help="Add interval annotation underneath tracks (optional)")
 parser.add_option("-w", "--annotationRgba", action="store", type="string", dest="annotationRgba", default=default_annotation_rgba, help="Annotation 'rgba(r,g,b,a)' color string (optional)")
 parser.add_option("-z", "--annotationFontPointSize", action="store", type="string", dest="annotationFontPointSize", default=default_annotation_font_size, help="Annotation font point size (optional)")
 parser.add_option("-f", "--annotationFontFamily", action="store", type="string", dest="annotationFontFamily", default=default_annotation_font_family, help="Annotation font family (optional)")
+parser.add_option("-e", "--annotationResolution", action="store", type="string", dest="annotationResolution", default=default_annotation_resolution, help="Annotation resolution, dpi (optional)")
+parser.add_option("-j", "--outputPngResolution", action="store", type="string", dest="outputPngResolution", default=default_output_png_resolution, help="Output PNG resolution, dpi (optional)")
 parser.add_option("-a", "--range", action="store", type="int", dest="rangePadding", help="Add or remove symmetrical padding to input regions (optional)")
 parser.add_option("-l", "--gallerySrcDir", action="store", type="string", dest="gallerySrcDir", help="Blueimp Gallery resources directory (optional)")
 parser.add_option("-c", "--octiconsSrcDir", action="store", type="string", dest="octiconsSrcDir", help="Github Octicons resources directory (optional)")
@@ -95,7 +107,8 @@ class Soda:
         self.browser_dump_url = None
         self.browser_pdf_url = None
         self.browser_session_id = None
-        self.browser_session_credentials = False
+        self.browser_session_kerberos_credentials = False
+        self.browser_session_basic_credentials = False
         self.browser_session_username = None
         self.browser_session_password = None
         self.browser_build_id = None
@@ -104,13 +117,14 @@ class Soda:
         self.range_padding = None
         self.convert_bin_fn = None
         self.identify_bin_fn = None
-        self.output_png_resolution = 600
-        self.output_png_thumbnail_width = 480
-        self.output_png_thumbnail_height = 480
+        self.output_png_resolution = default_output_png_resolution
+        self.output_png_thumbnail_width = default_output_png_thumbnail_width
+        self.output_png_thumbnail_height = default_output_png_thumbnail_height
         self.midpoint_annotation = default_midpoint_annotation
         self.interval_annotation = default_interval_annotation
         self.annotation_rgba = default_annotation_rgba
         self.annotation_font_family = default_annotation_font_family
+        self.annotation_resolution = default_annotation_resolution
         self.track_label_column_width = None
 
     def setup_midpoint_annotation(this, midpointAnnotation, debug):
@@ -144,6 +158,15 @@ class Soda:
         if debug:
             sys.stderr.write("Debug: Annotation font family set to [%s]\n" % (this.annotation_font_family))
 
+    def setup_annotation_resolution(this, annotationResolution, debug):
+        this.annotation_resolution = int(annotationResolution)
+        if debug:
+            sys.stderr.write("Debug: Annotation resolution string set to [%s]\n" % (this.annotation_resolution))
+
+    def setup_output_png_resolution(this, outputPngResolution, debug):
+        this.output_png_resolution = int(outputPngResolution)
+        if debug:
+            sys.stderr.write("Debug: Output PNG resolution string set to [%s]\n" % (this.output_png_resolution))
 
     def setup_range_padding(this, rangePadding, debug):
         this.range_padding = rangePadding
@@ -276,6 +299,8 @@ class Soda:
             zero_padding = 6
             for region_line in region_fh:
                 region_elements = region_line.rstrip().split('\t')
+                original_start = region_elements[1]
+                original_stop = region_elements[2]      
                 annotation_id = None
                 # skip if blank line
                 if len(region_elements) == 1:
@@ -284,10 +309,13 @@ class Soda:
                 # adjust range, if set
                 if this.range_padding:
                     try:
-                        region_elements[1] = str(int(region_elements[1]) - this.range_padding)
-                        region_elements[2] = str(int(region_elements[2]) + this.range_padding)
+                        midpoint = int(region_elements[1]) + ((int(region_elements[2]) - int(region_elements[1])) / 2)
+                        region_elements[1] = str(int(midpoint) - this.range_padding)
+                        region_elements[2] = str(int(midpoint) + this.range_padding)
+                        #region_elements[1] = str(int(region_elements[1]) - this.range_padding)
+                        #region_elements[2] = str(int(region_elements[2]) + this.range_padding)
                         if int(region_elements[1]) < 0:
-                            region_elements[1] = "0"
+                            region_elements[1] = '0'
                     except IndexError as ie:
                         sys.stderr.write("Error: Region elements are [%d | %s]\n" % (len(region_elements), region_elements))
                         sys.exit(-1)
@@ -301,33 +329,37 @@ class Soda:
                 elif len(region_elements) == 3:
                     annotation_id = "_".join(['plot', str(counter).zfill(zero_padding), region_elements[0], region_elements[1], region_elements[2]])
                 if annotation_id:
-                    annotated_line = '\t'.join([region_elements[0], region_elements[1], region_elements[2], annotation_id]) + '\n'
+                    annotated_line = '\t'.join([region_elements[0], region_elements[1], region_elements[2], annotation_id, original_start, original_stop]) + '\n'
                     this.temp_annotated_regions_fh.write(annotated_line)
                 counter = counter + 1
         if debug:
             sys.stderr.write("Debug: Annotated regions file written to [%s]\n" % (this.temp_annotated_regions_fn))  
         this.temp_annotated_regions_fh.close()
-
+        
     def setup_browser_url(this, browserURL, debug):
         this.browser_url = browserURL
-        if browserURL != default_genome_browser_url:
-            options.browserUsername = None
-            options.browserPassword = None
-            sys.stderr.write("Warning: Browser URL was changed from default; credentials were blanked out\n")
         if debug:
             sys.stderr.write("Debug: Browser URL set to [%s]\n" % (this.browser_url))
         
     def setup_browser_username(this, browserUsername, debug):
         this.browser_username = browserUsername
-        this.browser_session_credentials = True
         if debug:
             sys.stderr.write("Debug: Browser username set to [%s]\n" % (this.browser_username))
 
     def setup_browser_password(this, browserPassword, debug):
         this.browser_password = browserPassword
-        this.browser_session_credentials = True
         if debug:
             sys.stderr.write("Debug: Browser password set to [%s]\n" % (this.browser_password))
+
+    def setup_browser_authentication_type(this, useKerberosCredentials, debug):
+        if this.browser_username and this.browser_password:
+            this.browser_session_basic_credentials = True
+            this.browser_session_kerberos_credentials = False
+        if useKerberosCredentials:
+            this.browser_session_kerberos_credentials = True
+        if debug:
+            sys.stderr.write("Debug: Basic credentials enabled [%r]\n" % (this.browser_session_basic_credentials))
+            sys.stderr.write("Debug: Kerberos credentials enabled [%r]\n" % (this.browser_session_kerberos_credentials))
 
     def setup_browser_build_id(this, browserBuildID, debug):
         this.browser_build_id = browserBuildID
@@ -335,7 +367,7 @@ class Soda:
             sys.stderr.write("Debug: Browser build ID set to [%s]\n" % (this.browser_build_id))
 
     def setup_browser_dump_url(this, debug):
-        this.browser_dump_url = this.browser_url + '/cgi-bin/cartDump'
+        this.browser_dump_url = this.browser_url + '/cgi-bin/cartDump?cartDumpAsTable=[]'
         if debug:
             sys.stderr.write("Debug: Browser dump URL set to [%s]\n" % (this.browser_dump_url))
 
@@ -349,76 +381,20 @@ class Soda:
         if debug:
             sys.stderr.write("Debug: Browser session ID set to [%s]\n" % (this.browser_session_id))
 
-    def setup_track_label_column_width(this, textSize, labelWidth, debug):
-        """
-        * multiplicative factors were derived approximately from measuring PDFs 
-          rendered from combinations of various text size and label width settings
-
-        * text size is guaranteed to be one of the following values per UCSC support:
-          cf. https://groups.google.com/a/soe.ucsc.edu/d/msg/genome/TNnukmFSiVI/pimG80jQBAAJ
-        """
-        if textSize == 6 or textSize == 8 or textSize == 10:
-            if labelWidth <= 20:
-                this.track_label_column_width = float(labelWidth) * 3.16
-            elif labelWidth >= 21 and labelWidth <= 45:
-                this.track_label_column_width = float(labelWidth) * 2.95
-            elif labelWidth > 45:
-                this.track_label_column_width = float(labelWidth) * 2.83
-        elif textSize == 12:
-            if labelWidth <= 30:
-                this.track_label_column_width = float(labelWidth) * 3.45
-            elif labelWidth >= 31 and labelWidth <= 45:
-                this.track_label_column_width = float(labelWidth) * 3.32
-            elif labelWidth >= 46:
-                this.track_label_column_width = float(labelWidth) * 3.28
-        elif textSize == 14:
-            if labelWidth <= 30:
-                this.track_label_column_width = float(labelWidth) * 3.85
-            elif labelWidth >= 31 and labelWidth <= 45:
-                this.track_label_column_width = float(labelWidth) * 3.78
-            elif labelWidth >= 46:
-                this.track_label_column_width = float(labelWidth) * 3.74
-        elif textSize == 18:
-            if labelWidth <= 30:
-                this.track_label_column_width = float(labelWidth) * 4.76
-            elif labelWidth >= 31 and labelWidth <= 45:
-                this.track_label_column_width = float(labelWidth) * 4.69
-            elif labelWidth >= 46:
-                this.track_label_column_width = float(labelWidth) * 4.47
-        elif textSize == 24:
-            if labelWidth <= 30:
-                this.track_label_column_width = float(labelWidth) * 6.58
-            elif labelWidth >= 31 and labelWidth <= 45:
-                this.track_label_column_width = float(labelWidth) * 5.94
-            elif labelWidth >= 46:
-                this.track_label_column_width = float(labelWidth) * 4.45
-        elif textSize == 34:
-            if labelWidth <= 30:
-                this.track_label_column_width = float(labelWidth) * 8.39
-            elif labelWidth >= 31 and labelWidth <= 45:
-                this.track_label_column_width = float(labelWidth) * 6.00
-            elif labelWidth >= 46:
-                this.track_label_column_width = float(labelWidth) * 4.50
-
-        # shift offset one pixel from the left edge border
-        this.track_label_column_width = this.track_label_column_width - 1
-        
-        if debug:
-            sys.stderr.write("Debug: Track label column width set to [%d] pixels\n" % (this.track_label_column_width))
-
     def generate_pdfs_from_annotated_regions(this, debug):
         with open(this.temp_annotated_regions_fn, "r") as temp_annotated_regions_fh:
             for region_line in temp_annotated_regions_fh:
                 region_elements = region_line.rstrip().split('\t')
                 region_obj = {
-                    u"chrom" : region_elements[0],
-                    u"start" : region_elements[1],
-                    u"stop"  : region_elements[2],
-                    u"id"    : region_elements[3]
+                    u"chrom"    : region_elements[0],
+                    u"start"    : region_elements[1],
+                    u"stop"     : region_elements[2],
+                    u"id"       : region_elements[3],
+                    u"o_start"  : region_elements[4],
+                    u"o_stop"   : region_elements[5]
                 }
                 region_id = region_obj['id']
                 this.region_objs.append(region_obj)
-                this.region_ids.append(region_id)
                 this.generate_pdf_from_annotated_region(region_obj, region_id, debug)
 
     def generate_pdf_from_annotated_region(this, region_obj, region_id, debug):
@@ -433,22 +409,34 @@ class Soda:
         if debug:
             sys.stderr.write("Debug: Submitting POST body [%s] to request\n" % (browser_post_body))
         browser_credentials = None
-        if this.browser_session_credentials:
+        if this.browser_session_basic_credentials:
             browser_credentials = requests.auth.HTTPBasicAuth(this.browser_username, this.browser_password)
+        elif this.browser_session_kerberos_credentials:
+            browser_credentials = requests_kerberos.HTTPKerberosAuth(mutual_authentication=requests_kerberos.OPTIONAL)
         browser_cartdump_response = requests.post(
             url = this.browser_dump_url,
             data = browser_post_body,
             auth = browser_credentials,
-            verify = False,
+            verify = True,
         )
+        if debug:
+            sys.stderr.write("Debug: Credentials [%s]\n" % (str(browser_credentials)))
+        if browser_cartdump_response.status_code == 401:
+            sys.stderr.write("Error: No credentials available -- please use 'kinit' to set up a Kerberos ticket, or specify a Basic username and password\n")
+            sys.exit(-1)
+        elif browser_cartdump_response.status_code != 200:
+            sys.stderr.write("Error: Access to genome browser failed\nStatus\t[%d]\nHeaders\t[%s]\nText\t[%s]" % (browser_cartdump_response.status_code, browser_cartdump_response.headers, browser_cartdump_response.text))
+            sys.exit(-1)
         # get cart dump
         browser_cartdump_response_content = browser_cartdump_response.content
         browser_cartdump_textSize = None # textSize
         browser_cartdump_hgt_labelWidth = None # hgt.labelWidth
-        browser_cartdump_lines = browser_cartdump_response_content.decode().split('\n')
+        browser_cartdump_lines = browser_cartdump_response_content.split('\n')
         for browser_cartdump_line in browser_cartdump_lines:
             try:
                 browser_cartdump_line_values = browser_cartdump_line.rstrip().split(' ')
+                if debug:
+                    sys.stderr.write("Debug: Cart dump lines: [%s]\n" % (browser_cartdump_line_values))
             except ValueError as ve:
                 sys.stderr.write("Error: Could not parse cartDump response [%s]" % (browser_cartdump_response_content))
                 sys.exit(-1)
@@ -456,14 +444,18 @@ class Soda:
                 browser_cartdump_textSize = browser_cartdump_line_values[1]
             elif browser_cartdump_line_values[0] == 'hgt.labelWidth':
                 browser_cartdump_hgt_labelWidth = browser_cartdump_line_values[1]
+        if browser_cartdump_textSize is None:
+            browser_cartdump_textSize = default_ucsc_browser_text_size
+        if browser_cartdump_hgt_labelWidth is None:
+            browser_cartdump_hgt_labelWidth = default_ucsc_browser_label_area_width
         if debug:
             sys.stderr.write("Debug: Cart dump textSize and hgt.labelWidth are: [%s] and [%s]\n" % (browser_cartdump_textSize, browser_cartdump_hgt_labelWidth))
-        this.setup_track_label_column_width(int(browser_cartdump_textSize), int(browser_cartdump_hgt_labelWidth), debug)
+
         # write response text to cartDump in temporary output folder
         cart_dump_fn = os.path.join(this.temp_pdf_results_dir, 'cartDump')
         if debug:
             sys.stderr.write("Debug: Writing cart dump response content to [%s]\n" % (cart_dump_fn))
-        cart_dump_fh = open(cart_dump_fn, "wb")
+        cart_dump_fh = open(cart_dump_fn, "w")
         cart_dump_fh.write(browser_cartdump_response_content)
         cart_dump_fh.close()
         # ensure cartDump exists
@@ -471,11 +463,19 @@ class Soda:
             sys.stderr.write("Error: Could not write cart dump data to [%s]\n" % (cart_dump_fn))
             sys.exit(-1)
         # get PDF URL
-        browser_pdf_url_response = requests.get(
-            url = this.browser_pdf_url,
-            auth = browser_credentials,
-            verify = False
-        )
+        encoded_browser_position_str = region_obj['chrom'] + "%3A" + str(region_obj['start']) + "%2D" + str(region_obj['stop'])        
+        modified_browser_pdf_url = this.browser_pdf_url + "&position=" + encoded_browser_position_str
+        if debug:
+            sys.stderr.write("Debug: Requesting PDF via: [%s]\n" % (modified_browser_pdf_url))
+        try:
+            browser_pdf_url_response = requests.get(
+                url = modified_browser_pdf_url,
+                auth = browser_credentials,
+                verify = True
+            )
+        except requests.exceptions.ChunkedEncodingError as err:
+            sys.stderr.write("Warning: Could not retrieve PDF for region [%s]\n" % (encoded_browser_position_str))
+            return
         browser_pdf_url_soup = bs4.BeautifulSoup(browser_pdf_url_response.text, "html.parser")
         browser_pdf_url_soup_hrefs = []
         for anchor in browser_pdf_url_soup.find_all('a'):
@@ -498,7 +498,7 @@ class Soda:
             url = browser_pdf_url,
             stream = True,
             auth = browser_credentials,
-            verify = False,
+            verify = True,
         )
         browser_pdf_local_fn = os.path.join(this.temp_pdf_results_dir, region_obj['id'] + '.pdf')
         with open(browser_pdf_local_fn, 'wb') as browser_pdf_local_fh:
@@ -510,7 +510,14 @@ class Soda:
         # remove cartDump file
         os.remove(cart_dump_fn)
         if this.midpoint_annotation or this.interval_annotation:
+            # set the track_label_column_width based on the bounding box calculation
+            ucsc_pdf_bbox_parser.set_fn(browser_pdf_local_fn)
+            ucsc_pdf_bbox_parser.parse(debug)
+            bbox_x_l = ucsc_pdf_bbox_parser.get_bbox()[0]
+            bbox_x_r = ucsc_pdf_bbox_parser.get_bbox()[2]
+            this.track_label_column_width = bbox_x_r - ((bbox_x_r - bbox_x_l) / 2) + 1
             this.generate_pdf_with_annotation(browser_pdf_local_fn, region_obj, debug)
+        this.region_ids.append(region_id)
 
     def generate_pdf_with_annotation(this, browser_pdf_local_fn, region_obj, debug):
         # get dimensions of browser PDF with 'identify'
@@ -560,21 +567,19 @@ class Soda:
             svg = svg + '<text x="%d" y="%d" style="font-family:%s;fill:%s;font-size:%s">%s</text>' % (svg_text_x, svg_text_y, svg_text_font_family, svg_text_fill, svg_text_font_size, svg_text)
         elif this.interval_annotation:
             # draw <rect> element on SVG
-            full_start = int(region_obj['start'])
-            full_stop = int(region_obj['stop'])
-            if this.range_padding:
-                adj_start = full_start + this.range_padding
-                adj_stop = full_stop - this.range_padding
-                adj_ratio = float(adj_stop - adj_start) / float(full_stop - full_start) # fraction of annotated range that represents pre-range interval
-            else:
-                adj_start = full_start
-                adj_stop = full_stop
-                adj_ratio = 1.0
-            adj_track_column_width = int(track_column_width * adj_ratio)
-            adj_track_width_difference = track_column_width - adj_track_column_width
-            adj_track_x_offset = int(float(adj_track_width_difference) / 2.0)
+            full_start = region_obj['start']
+            full_stop = region_obj['stop']
+            original_start = region_obj['o_start']
+            original_stop = region_obj['o_stop']
+            rect_width_in_bases = float(original_stop) - float(original_start)
+            column_width_in_bases = float(2.0 * this.range_padding)
+            ratio_of_rect_width_to_column_width = rect_width_in_bases / column_width_in_bases
+            rect_width_in_pixels = track_column_width * ratio_of_rect_width_to_column_width
+            column_rect_width_difference = track_column_width - rect_width_in_pixels
+            column_rect_offset = column_rect_width_difference / 2.0
+            adj_track_column_width = rect_width_in_pixels
             adj_track_column_height = int(browser_pdf_height) + top_padding
-            svg_rect_x = leftmost_column_width + adj_track_x_offset
+            svg_rect_x = leftmost_column_width + column_rect_offset
             svg_rect_y = 0
             svg_rect_width = adj_track_column_width
             svg_rect_height = adj_track_column_height
@@ -584,7 +589,7 @@ class Soda:
             svg = svg + '<rect x="%d" y="%d" width="%d" height="%d" style="fill:%s;stroke-width:%s;stroke:%s" />' % (svg_rect_x, svg_rect_y, svg_rect_width, svg_rect_height, svg_rect_fill, svg_rect_stroke_width, svg_rect_stroke)
             # draw <text> on SVG
             svg_text_chr = region_obj['chrom']
-            svg_text = '%s:%d-%d' % (svg_text_chr, adj_start, adj_stop)
+            svg_text = '%s:%d-%d' % (svg_text_chr, int(original_start), int(original_stop))
             svg_text_x = leftmost_column_width + (track_column_width / 2.0)
             svg_text_y = 8
             svg_text_fill = 'rgba(0,0,0,1)'
@@ -596,12 +601,12 @@ class Soda:
         # write SVG to text file
         svg_local_fn = os.path.join(this.temp_pdf_results_dir, 'watermark.svg')
         with open(svg_local_fn, 'wb') as svg_local_fh:
-            svg_local_fh.write(svg.encode())
+            svg_local_fh.write(svg)
         if debug:
             sys.stderr.write("Debug: Written SVG watermark to [%s]\n" % (svg_local_fn))
-        # `convert` SVG to PDF with high density
+        # `convert` SVG to PDF with specified annotation resolution
         svg_as_pdf_local_fn = os.path.join(this.temp_pdf_results_dir, 'watermark.pdf')
-        convert_cmd = '%s -density %d %s -background white -flatten %s' % (this.convert_bin_fn, this.output_png_resolution, svg_local_fn, svg_as_pdf_local_fn)
+        convert_cmd = '%s -density %d %s -background white -flatten %s' % (this.convert_bin_fn, this.annotation_resolution, svg_local_fn, svg_as_pdf_local_fn)
         try:
             convert_result = subprocess.check_output(convert_cmd, shell = True)
         except subprocess.CalledProcessError as err:
@@ -633,11 +638,13 @@ class Soda:
     def generate_png_from_pdf(this, region_id, debug):
         browser_pdf_local_fn = os.path.join(this.temp_pdf_results_dir, region_id + '.pdf')
         browser_png_local_fn = os.path.join(this.temp_png_results_dir, region_id + '.png')
+        # convert PDF to PNG with specified output resolution
         convert_cmd = '%s -density %d %s -background white -flatten %s' % (this.convert_bin_fn, this.output_png_resolution, browser_pdf_local_fn, browser_png_local_fn)
         try:
             convert_result = subprocess.check_output(convert_cmd, shell = True)
         except subprocess.CalledProcessError as err:
             convert_result = "Error: Command '{}' returned with error (code {}): {}".format(err.cmd, err.returncode, err.output)
+            sys.stderr.write("%s\n" % (convert_result))
             sys.exit(-1)
         if debug:
             sys.stderr.write("Debug: Converted image file located at [%s]\n" % (browser_png_local_fn))
@@ -786,7 +793,7 @@ class Soda:
             'title' : this.gallery_title,
             'image_data' : zip(image_urls, thumbnail_urls, pdf_urls, external_urls, titles, descriptions)
         }
-        with open(gallery_index_fn, "wb") as gallery_index_fh:
+        with open(gallery_index_fn, "w") as gallery_index_fh:
             html = template_environment.get_template(template_fn).render(render_context).encode('utf-8')
             gallery_index_fh.write(html)
         if debug:
@@ -813,6 +820,8 @@ def main():
     s.setup_annotation_rgba(options.annotationRgba, options.verbose)
     s.setup_annotation_font_point_size(options.annotationFontPointSize, options.verbose)
     s.setup_annotation_font_family(options.annotationFontFamily, options.verbose)
+    s.setup_annotation_resolution(options.annotationResolution, options.verbose)
+    s.setup_output_png_resolution(options.outputPngResolution, options.verbose)
     if options.rangePadding:
         s.setup_range_padding(options.rangePadding, options.verbose)
     s.setup_output_dir(options.outputDir, options.verbose)
@@ -835,6 +844,7 @@ def main():
     s.setup_browser_url(options.browserURL, options.verbose)
     s.setup_browser_username(options.browserUsername, options.verbose)
     s.setup_browser_password(options.browserPassword, options.verbose)
+    s.setup_browser_authentication_type(options.useKerberosAuthentication, options.verbose)
     s.setup_browser_build_id(options.browserBuildID, options.verbose)
     s.setup_browser_session_id(options.browserSessionID, options.verbose)
     s.setup_browser_dump_url(options.verbose)
