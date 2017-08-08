@@ -466,7 +466,6 @@ class Soda:
             sys.stderr.write("Error: Could not write cart dump data to [%s]\n" % (cart_dump_fn))
             sys.exit(-1)
         # get PDF URL
-<<<<<<< HEAD
         encoded_browser_position_str = region_obj['chrom'] + "%3A" + str(region_obj['start']) + "%2D" + str(region_obj['stop'])        
         modified_browser_pdf_url = this.browser_pdf_url + "&position=" + encoded_browser_position_str
         if debug:
@@ -480,17 +479,6 @@ class Soda:
         except requests.exceptions.ChunkedEncodingError as err:
             sys.stderr.write("Warning: Could not retrieve PDF for region [%s]\n" % (encoded_browser_position_str))
             return
-=======
-        encoded_browser_position_str = region_obj['chrom'] + "%3A" + str(region_obj['start']) + "%2D" + str(region_obj['stop'])
-        modified_browser_pdf_url = this.browser_pdf_url + "&position=" + encoded_browser_position_str
-        if debug:
-            sys.stderr.write("Debug: Requesting PDF via: [%s]\n" % (modified_browser_pdf_url))
-        browser_pdf_url_response = requests.get(
-            url = modified_browser_pdf_url,
-            auth = browser_credentials,
-            verify = False
-        )
->>>>>>> ba10dd4852850684730297cc16629098d04aa8f2
         browser_pdf_url_soup = bs4.BeautifulSoup(browser_pdf_url_response.text, "html.parser")
         browser_pdf_url_soup_hrefs = []
         for anchor in browser_pdf_url_soup.find_all('a'):
