@@ -48,6 +48,8 @@ You may need to use `pip` or similar to add Python libraries that may not be par
 * [Beautiful Soup](https://pypi.python.org/pypi/beautifulsoup4)
 * [Jinja2](https://pypi.python.org/pypi/Jinja2)
 * [pdfrw](https://pypi.python.org/pypi/pdfrw)
+* [requests-kerberos](https://pypi.python.org/pypi/requests-kerberos)
+* [pdfminer](https://pypi.python.org/pypi/pdfminer)
 
 It may be useful to use a package manager to add [ImageMagick](http://www.imagemagick.org) and [Ghostscript](http://www.ghostscript.com/), if not already installed.
 
