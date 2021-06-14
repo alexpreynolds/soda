@@ -1,4 +1,4 @@
-# soda.py
+# soda
 Python-based UCSC genome browser snapshot gallery-maker
 
 - [Description](#description)
@@ -9,7 +9,7 @@ Python-based UCSC genome browser snapshot gallery-maker
 
 ## Description
 
-`soda.py` is a Python script that generates a gallery of images made from snapshots from a UCSC genome browser instance, so-called "soda plots". Snapshots can be derived from an external browser instance, by pointing `soda.py` to that browser instance's host name.
+`soda` is a Python script that generates a gallery of images made from snapshots from a UCSC genome browser instance, so-called "soda plots". Snapshots can be derived from an external browser instance, by pointing `soda` to that browser instance's host name.
 
 You provide the script with four required parameters:
 
@@ -32,35 +32,30 @@ $ sort -k5,5n input.bed > input_sorted_by_scores.bed
 
 Any ordering is allowed. Gallery snapshots are presented in the same order as rows in the input BED file.
 
-## Download
+## Installation
 
-To grab this kit, you can clone it from Github:
+Set up a virtual environment via `virtualenv` or `conda create` and activate it. Then install via `pip`:
+
+```bash
+$ python3 -m pip install soda-gallery
+```
+
+### Development
+
+Clone it from Github and install locally into a virtual environment:
 
 ```bash
 $ git clone https://github.com/alexpreynolds/soda.git
+$ cd soda
+$ python3 -m pip install -e .
 ```
-
-## Dependencies
-
-You may need to use `pip` or similar to add Python libraries that may not be part of a typical environment:
-
-* [requests](https://pypi.python.org/pypi/requests)
-* [Beautiful Soup](https://pypi.python.org/pypi/beautifulsoup4)
-* [Jinja2](https://pypi.python.org/pypi/Jinja2)
-* [pdfrw](https://pypi.python.org/pypi/pdfrw)
-* [requests-kerberos](https://pypi.python.org/pypi/requests-kerberos)
-* [pdfminer](https://pypi.python.org/pypi/pdfminer)
-
-It may be useful to use a package manager to add [ImageMagick](http://www.imagemagick.org) and [Ghostscript](http://www.ghostscript.com/), if not already installed.
-
-Installing these dependencies may also require administrator privileges. In this case, please see the documentation for these components for installation instructions, or contact your local IT support for assistance.
 
 ## Usage
 
 As a usage example, you may have a BED file in some home directory called `/home/abc/regions.bed`. You have a session ID from the UCSC genome browser called `123456_abcdef`, with all your tracks selected and display parameters set, using `hg38` as the reference genome build. Finally, you want to store the results in a folder called `/home/abc/my-soda-plot-results`:
 
 ```bash
-$ /path/to/soda.py -r "/home/abc/regions.bed" -b "hg38" -s "123456_abcdef" -o "/home/abc/my-soda-plot-results"
+$ soda -r "/home/abc/regions.bed" -b "hg38" -s "123456_abcdef" -o "/home/abc/my-soda-plot-results"
 ```
 
 If you run this locally, you can open the result folder's `index.html` file with your web browser to load the gallery. For example, from the Terminal application in OS X, you can run:
@@ -72,6 +67,8 @@ $ open /Users/abc/my-soda-plot-results/index.html
 which opens the gallery index in your default web browser.
 
 ## Options
+
+A full listing of options is available via `soda --help`.
 
 ### Required
 
@@ -99,7 +96,7 @@ The `-s` or `--browserSessionID` option specify the browser session ID, which re
 -o, --outputDir
 ```
 
-Use the `-o` or `--outputDir` option to specify where the image gallery is saved. If this path already exists, `soda.py` will exit with a fatal error message.
+Use the `-o` or `--outputDir` option to specify where the image gallery is saved. If this path already exists, `soda` will exit with a fatal error message.
 
 ### Optional
 
@@ -142,7 +139,7 @@ Use the `-g` or `--browserURL` option to specify a different genome browser URL 
 -p, --browserPassword
 ```
 
-Use these two options to specify a username and password for the browser instance, if you pick a different `--browserURL` and that browser instance requires basic credentials. If these options are not specified, no credentials are passed along. If authentication is required and it fails, `soda.py` may exit with an error.
+Use these two options to specify a username and password for the browser instance, if you pick a different `--browserURL` and that browser instance requires basic credentials. If these options are not specified, no credentials are passed along. If authentication is required and it fails, `soda` may exit with an error.
 
 ```bash
 -y, --useKerberosAuthentication

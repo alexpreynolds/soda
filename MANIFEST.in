@@ -1,0 +1,3 @@
+recursive-include soda/Gallery *
+recursive-include soda/Gallery-templates *
+recursive-include soda/octicons *

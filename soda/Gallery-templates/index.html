@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html style="scrollbar-width: none; -ms-overflow-style: none;">
+  <head>
+    <meta charset="utf-8"/>
+    <link rel="stylesheet" href="css/blueimp-gallery.min.css">
+    <link rel="stylesheet" href="octicons/build/font/octicons.css">
+    <style>
+
+    body {
+      font-family: 
+        ui-sans-serif, 
+        system-ui, 
+        -system-ui, 
+        -apple-system,
+        BlinkMacSystemFont,
+        Roboto, Helvetica, Arial, 
+        sans-serif, 
+        "Apple Color Emoji";
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      overflow-x: hidden !important;
+      overflow-y: scroll !important;
+      overscroll-behavior-y: none;
+    }
+
+    ::-webkit-scrollbar {
+      display: none;
+    }
+
+    a:link, .row-anchor:link { color: #4f8bff; text-decoration: none; }
+    a:visited, .row-anchor:visited { color: #4f8bff; text-decoration: none; }
+    a:hover, .row-anchor:hover { color: #4f8bff; text-decoration: none; font-weight: bolder; }
+
+    h1 {
+      margin-bottom: 2px;
+    }
+
+    h4 {
+      margin-top: 2px;
+    }
+
+    #header {
+      position: absolute;
+      top: 0px;
+      left: 0px;
+      padding-top: 10px;
+      padding-left: 15px;
+      padding-right: 15px;
+      padding-bottom: 15px;
+      color: #fff;
+      display: block;
+      background-color: rgba(0, 0, 0, 0.667);
+      width: 100%;
+      font-weight: bolder;
+    }
+
+    #header > .title {
+      font-size: 1.75em;
+      padding-bottom: 5px !important;
+    }
+
+    #header > .title, #header > .description-parent, #header > .pdf-parent, #header > .external-parent {
+      margin: 0;
+      padding: 0;
+    }
+
+    #links-table {
+      border-collapse: collapse;
+      width: 100%;
+    }
+
+    #links-table td, #links-table th {
+      border: 1px solid #ddd;
+      padding: 8px;
+    }
+
+    #links-table tr:nth-child(even) { background-color: #f2f2f2; }
+
+    #links-table tr:hover { background-color: #ddd; }
+
+    #links-table tr.row-selected { background-color: khaki; }
+
+    #links-table th {
+      padding-top: 12px;
+      padding-bottom: 12px;
+      text-align: left;
+      background-color: #4CAF50;
+      color: white;
+    }
+
+    </style>
+    <title>{{ title }}</title>
+  </head>
+  <body>
+    <h1>{{ title }}</h1>
+    <h4>{{ timestamp }}</h4>
+    <div id="blueimp-gallery" class="blueimp-gallery">
+      <div class="slides"></div>
+      <div id="header">
+        <h3 class="title"></h3>
+        <p class="description-parent"><span class="octicon octicon-info" style="font-size:larger;"></span> <span class="description"></span></p>
+        <p class="pdf-parent"><span class="octicon octicon-file-pdf" style="font-size:larger;"></span> <span class="pdf-href"></span></p>
+        <p class="external-parent"><span class="octicon octicon-link-external" style="font-size:larger;"></span> <span class="external-href"></span></p>
+      </div>
+      <a class="prev">‹</a>
+      <a class="next">›</a>
+      <a class="close">×</a>
+      <a class="play-pause"></a>
+      <ol class="indicator"></ol>
+    </div>
+    <div id="links">
+      <table id="links-table">
+        <tr>
+          <th style="width:1%;">Item</th>
+          <th style="width:1%;">Thumbnail</th>
+          <th>Genomic region</th>
+        </tr>
+        {% for image_url, thumbnail_url, pdf_url, external_url, image_title, image_description, genomic_region in image_data -%}
+        <tr id="row_{{ loop.index0 }}">
+          <td 
+            style="text-align:center;" 
+            href="{{ image_url }}"
+            title="{{ image_title }}"
+            data-description="{{ image_description }}"
+            data-pdf-href="{{ pdf_url }}"
+            data-external-href="{{ external_url }}"
+            data-gallery="#blueimp-gallery-fullscreen"
+            class="blueimp-gallery-anchor row-anchor"
+            onclick="document.getElementById('links').click(); setTimeout(function() { document.getElementsByClassName('indicator')[0].children[{{ loop.index0 }}].click(); }, 500);">
+            {{ loop.index }}
+          </td>
+          <td
+            class="blueimp-gallery-anchor row-anchor">
+            <a href="{{ image_url }}"
+              title="{{ image_title }}"
+              data-description="{{ image_description }}"
+              data-pdf-href="{{ pdf_url }}"
+              data-external-href="{{ external_url }}"
+              data-gallery="#blueimp-gallery-fullscreen"
+              class="blueimp-gallery-anchor">
+              <img src="{{ thumbnail_url }}" alt="">
+            </a>
+          </td>
+          <td 
+            href="{{ image_url }}"
+            title="{{ image_title }}"
+            data-description="{{ image_description }}"
+            data-pdf-href="{{ pdf_url }}"
+            data-external-href="{{ external_url }}"
+            data-gallery="#blueimp-gallery-fullscreen"
+            class="blueimp-gallery-anchor row-anchor"
+            onclick="document.getElementById('links').click(); setTimeout(function() { document.getElementsByClassName('indicator')[0].children[{{ loop.index0 }}].click(); }, 500);">
+            {{ genomic_region }}
+          </td>
+        </tr>
+        {% endfor -%}
+      </table>
+      
+    </div>
+    <script src="js/blueimp-gallery.min.js"></script>
+    <script>
+
+let currentSlideIdx = 0;
+
+function make_anchor(href, txt, target) {
+  let element = document.createElement("a");
+  element.href = href;
+  element.target = target;
+  element.innerHTML = txt;
+  return element;
+}
+
+document.getElementById('links').onclick = function (event) {
+  event = event || window.event;
+  let target = event.target || event.srcElement,
+    link = target.src ? target.parentNode : target,
+    options = {
+      index: link,
+      event: event,
+      onslide: function (index, slide) {
+        self = this;
+        var initialize_additional = function (index, data, klass, self) {
+          var text = self.list[index].getAttribute(data);
+          var node = self.container.find(klass);
+          node.empty();
+          if (text) {
+            node[0].appendChild(document.createTextNode(text));
+          }
+        };
+        initialize_additional(index, 'data-description', '.description', self);
+        var initialize_href = function (index, data, klass, self) {
+          var href_fragment = self.list[index].getAttribute(data);
+          var node = self.container.find(klass);
+          node.empty();
+          if (href_fragment) {
+            node[0].appendChild(make_anchor(href_fragment, href_fragment, "_blank"));
+          }
+        };
+        initialize_href(index, 'data-pdf-href', '.pdf-href', self);
+        initialize_href(index, 'data-external-href', '.external-href', self);
+      },
+      onslideend: function(index, slide) {
+        self = this;
+        const previousSlideIdx = currentSlideIdx;
+        const pei =  `row_${previousSlideIdx}`;
+        const pe = document.getElementById(pei);
+        currentSlideIdx = index;
+        const cei = `row_${currentSlideIdx}`;
+        const ce = document.getElementById(cei);
+        pe.className = "";
+        ce.className = "row-selected";
+        ce.scrollIntoView({behavior: "smooth", block: "center"});
+      },
+    },
+    links = this.getElementsByTagName('a');
+  blueimp.Gallery(links, options);
+};
+
+document.getElementById("links").click();
+setTimeout(function() { document.getElementsByClassName("slide-content")[0].click(); }, 500);
+
+    </script>
+  </body>
+</html>

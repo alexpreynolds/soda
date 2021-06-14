@@ -1,0 +1,7 @@
+requests==2.25.1
+certifi==2021.5.30
+beautifulsoup4==4.9.3
+Jinja2==3.0.1
+pdfminer==20191125
+pdfrw==0.4
+requests_kerberos==0.12.0
