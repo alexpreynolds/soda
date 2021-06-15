@@ -40,6 +40,13 @@ Set up a virtual environment via `virtualenv` or `conda create` and activate it.
 $ python3 -m pip install soda-gallery
 ```
 
+Or via Bioconda:
+
+```bash
+$ conda config --add channels bioconda
+$ conda install soda-gallery
+```
+
 ### Development
 
 Clone it from Github and install locally into a virtual environment:
