@@ -6,43 +6,41 @@
  * https://blueimp.net
  *
  * Licensed under the MIT license:
- * http://www.opensource.org/licenses/MIT
+ * https://opensource.org/licenses/MIT
  */
 
-/* global define, window, document */
+/* global define */
 
 ;(function (factory) {
   'use strict'
   if (typeof define === 'function' && define.amd) {
     // Register as an anonymous AMD module:
-    define([
-      './blueimp-helper',
-      './blueimp-gallery'
-    ], factory)
+    define(['./blueimp-helper', './blueimp-gallery'], factory)
   } else {
     // Browser globals:
-    factory(
-      window.blueimp.helper || window.jQuery,
-      window.blueimp.Gallery
-    )
+    factory(window.blueimp.helper || window.jQuery, window.blueimp.Gallery)
   }
-}(function ($, Gallery) {
+})(function ($, Gallery) {
   'use strict'
 
-  $.extend(Gallery.prototype.options, {
+  var galleryPrototype = Gallery.prototype
+
+  $.extend(galleryPrototype.options, {
     // Defines if the gallery should open in fullscreen mode:
-    fullScreen: false
+    fullscreen: false
   })
 
-  var initialize = Gallery.prototype.initialize
-  var close = Gallery.prototype.close
+  var initialize = galleryPrototype.initialize
+  var close = galleryPrototype.close
 
-  $.extend(Gallery.prototype, {
+  $.extend(galleryPrototype, {
     getFullScreenElement: function () {
-      return document.fullscreenElement ||
-      document.webkitFullscreenElement ||
-      document.mozFullScreenElement ||
-      document.msFullscreenElement
+      return (
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.mozFullScreenElement ||
+        document.msFullscreenElement
+      )
     },
 
     requestFullScreen: function (element) {
@@ -71,7 +69,7 @@
 
     initialize: function () {
       initialize.call(this)
-      if (this.options.fullScreen && !this.getFullScreenElement()) {
+      if (this.options.fullscreen && !this.getFullScreenElement()) {
         this.requestFullScreen(this.container[0])
       }
     },
@@ -82,8 +80,7 @@
       }
       close.call(this)
     }
-
   })
 
   return Gallery
-}))
+})

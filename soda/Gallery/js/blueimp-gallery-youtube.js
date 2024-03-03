@@ -6,34 +6,30 @@
  * https://blueimp.net
  *
  * Licensed under the MIT license:
- * http://www.opensource.org/licenses/MIT
+ * https://opensource.org/licenses/MIT
  */
 
-/* global define, window, document, YT */
+/* global define, YT */
 
 ;(function (factory) {
   'use strict'
   if (typeof define === 'function' && define.amd) {
     // Register as an anonymous AMD module:
-    define([
-      './blueimp-helper',
-      './blueimp-gallery-video'
-    ], factory)
+    define(['./blueimp-helper', './blueimp-gallery-video'], factory)
   } else {
     // Browser globals:
-    factory(
-      window.blueimp.helper || window.jQuery,
-      window.blueimp.Gallery
-    )
+    factory(window.blueimp.helper || window.jQuery, window.blueimp.Gallery)
   }
-}(function ($, Gallery) {
+})(function ($, Gallery) {
   'use strict'
 
   if (!window.postMessage) {
     return Gallery
   }
 
-  $.extend(Gallery.prototype.options, {
+  var galleryPrototype = Gallery.prototype
+
+  $.extend(galleryPrototype.options, {
     // The list object property (or data attribute) with the YouTube video id:
     youTubeVideoIdProperty: 'youtube',
     // Optional object with parameters passed to the YouTube video player:
@@ -42,11 +38,11 @@
       wmode: 'transparent'
     },
     // Require a click on the native YouTube player for the initial playback:
-    youTubeClickToPlay: true
+    youTubeClickToPlay: false
   })
 
-  var textFactory = Gallery.prototype.textFactory ||
-                      Gallery.prototype.imageFactory
+  var textFactory =
+    galleryPrototype.textFactory || galleryPrototype.imageFactory
   var YouTubePlayer = function (videoId, playerVars, clickToPlay) {
     this.videoId = videoId
     this.playerVars = playerVars
@@ -56,10 +52,6 @@
   }
 
   $.extend(YouTubePlayer.prototype, {
-    canPlayType: function () {
-      return true
-    },
-
     on: function (type, func) {
       this.listeners[type] = func
       return this
@@ -68,7 +60,7 @@
     loadAPI: function () {
       var that = this
       var onYouTubeIframeAPIReady = window.onYouTubeIframeAPIReady
-      var apiUrl = '//www.youtube.com/iframe_api'
+      var apiUrl = 'https://www.youtube.com/iframe_api'
       var scriptTags = document.getElementsByTagName('script')
       var i = scriptTags.length
       var scriptTag
@@ -106,36 +98,35 @@
     },
 
     onPause: function () {
-      Gallery.prototype.setTimeout.call(
-        this,
-        this.checkSeek,
-        null,
-        2000
-      )
-    },
-
-    checkSeek: function () {
-      if (this.stateChange === YT.PlayerState.PAUSED ||
-        this.stateChange === YT.PlayerState.ENDED) {
-        // check if current state change is actually paused
-        this.listeners.pause()
-        delete this.playStatus
-      }
+      this.listeners.pause()
+      delete this.playStatus
     },
 
     onStateChange: function (event) {
+      window.clearTimeout(this.pauseTimeout)
       switch (event.data) {
         case YT.PlayerState.PLAYING:
           this.hasPlayed = true
           this.onPlaying()
           break
+        case YT.PlayerState.UNSTARTED:
         case YT.PlayerState.PAUSED:
+          // YouTube sends an unstarted event if pause is triggered before the
+          // video has started.
+          // YouTube sends a pause event when seeking.
+          // In both cases, we initiate a pause in a timeout that gets cleared
+          // if followed by another event within the timeout window.
+          this.pauseTimeout = galleryPrototype.setTimeout.call(
+            this,
+            this.onPause,
+            null,
+            500
+          )
+          break
         case YT.PlayerState.ENDED:
           this.onPause()
           break
       }
-      // Save most recent state change to this.stateChange
-      this.stateChange = event.data
     },
 
     onError: function (event) {
@@ -149,8 +140,12 @@
         this.playStatus = 1
       }
       if (this.ready) {
-        if (!this.hasPlayed && (this.clickToPlay || (window.navigator &&
-          /iP(hone|od|ad)/.test(window.navigator.platform)))) {
+        if (
+          !this.hasPlayed &&
+          (this.clickToPlay ||
+            (window.navigator &&
+              /iP(hone|od|ad)/.test(window.navigator.platform)))
+        ) {
           // Manually trigger the playing callback if clickToPlay
           // is enabled and to workaround a limitation in iOS,
           // which requires synchronous user interaction to start
@@ -192,10 +187,9 @@
         delete this.playStatus
       }
     }
-
   })
 
-  $.extend(Gallery.prototype, {
+  $.extend(galleryPrototype, {
     YouTubePlayer: YouTubePlayer,
 
     textFactory: function (obj, callback) {
@@ -203,11 +197,14 @@
       var videoId = this.getItemProperty(obj, options.youTubeVideoIdProperty)
       if (videoId) {
         if (this.getItemProperty(obj, options.urlProperty) === undefined) {
-          obj[options.urlProperty] = '//www.youtube.com/watch?v=' + videoId
+          obj[options.urlProperty] =
+            'https://www.youtube.com/watch?v=' + videoId
         }
-        if (this.getItemProperty(obj, options.videoPosterProperty) === undefined) {
-          obj[options.videoPosterProperty] = '//img.youtube.com/vi/' + videoId +
-            '/maxresdefault.jpg'
+        if (
+          this.getItemProperty(obj, options.videoPosterProperty) === undefined
+        ) {
+          obj[options.videoPosterProperty] =
+            'https://img.youtube.com/vi/' + videoId + '/maxresdefault.jpg'
         }
         return this.videoFactory(
           obj,
@@ -221,8 +218,7 @@
       }
       return textFactory.call(this, obj, callback)
     }
-
   })
 
   return Gallery
-}))
+})
