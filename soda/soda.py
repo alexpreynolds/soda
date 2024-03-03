@@ -4,7 +4,8 @@
 
 soda.py is a Python script that generates a gallery of images made from snapshots 
 from a UCSC genome browser instance, so-called "soda plots". Snapshots could be 
-derived from any other UCSC browser instance, if its URL is specified.
+derived from the Altius internal browser instance gb1, or any other UCSC browser 
+instance, if specified.
 
 You provide the script with four parameters:
 
@@ -16,7 +17,7 @@ You provide the script with four parameters:
 * Where you want to store the gallery end-product.
 
 Additional options are available. Run with --help for more information or read 
-the Options section of the README at: https://github.com/alexpreynolds/soda#options
+the Options section of the README at: https://github.com/Altius/soda#options
 
 """
 
@@ -37,12 +38,12 @@ import re
 import subprocess
 import jinja2
 import pdfrw
-import soda.ucsc_pdf_bbox_parser
+import ucsc_pdf_bbox_parser
 import time
 import datetime
 
 default_title = "Soda Gallery"
-default_genome_browser_url = "http://genome.ucsc.edu"
+default_genome_browser_url = "https://gb1.altiusinstitute.org"
 default_genome_browser_username = None
 default_genome_browser_password = None
 default_verbosity = False
@@ -58,6 +59,7 @@ default_output_png_thumbnail_height = 480
 default_annotation_resolution = default_output_png_resolution
 default_ucsc_browser_label_area_width = 17
 default_ucsc_browser_text_size = 8
+default_gallery_mode = 'photoswipe'
 
 parser = optparse.OptionParser()
 parser.add_option("-r", "--regionsFn", action="store", type="string", dest="regionsFn", help="Path to BED-formatted regions of interest (required)")
@@ -77,10 +79,11 @@ parser.add_option("-f", "--annotationFontFamily", action="store", type="string",
 parser.add_option("-e", "--annotationResolution", action="store", type="string", dest="annotationResolution", default=default_annotation_resolution, help="Annotation resolution, dpi (optional)")
 parser.add_option("-j", "--outputPngResolution", action="store", type="string", dest="outputPngResolution", default=default_output_png_resolution, help="Output PNG resolution, dpi (optional)")
 parser.add_option("-a", "--range", action="store", type="int", dest="rangePadding", help="Add or remove symmetrical padding to input regions (optional)")
-parser.add_option("-l", "--gallerySrcDir", action="store", type="string", dest="gallerySrcDir", help="Blueimp Gallery resources directory (optional)")
+parser.add_option("-l", "--gallerySrcDir", action="store", type="string", dest="gallerySrcDir", help="Gallery resources directory (optional)")
 parser.add_option("-c", "--octiconsSrcDir", action="store", type="string", dest="octiconsSrcDir", help="Github Octicons resources directory (optional)")
 parser.add_option("-k", "--convertBinFn", action="store", type="string", dest="convertBinFn", help="ImageMagick convert binary path (optional)")
 parser.add_option("-n", "--identifyBinFn", action="store", type="string", dest="identifyBinFn", help="ImageMagick identify binary path (optional)")
+parser.add_option("-m", "--galleryMode", dest="galleryMode", default="photoswipe", help="Gallery mode: blueimp or photoswipe [default: %default]")
 parser.add_option("-v", "--verbose", action="store_true", dest="verbose", default=default_verbosity, help="Print debug messages to stderr (optional)")
 (options, args) = parser.parse_args()
 
@@ -145,6 +148,7 @@ class Soda:
         self.annotation_font_family = default_annotation_font_family
         self.annotation_resolution = default_annotation_resolution
         self.track_label_column_width = None
+        self.gallery_mode = default_gallery_mode
 
     def setup_midpoint_annotation(this, midpointAnnotation, debug):
         this.midpoint_annotation = midpointAnnotation
@@ -345,10 +349,17 @@ class Soda:
                 # create modified ID from index, position and current ID, if available
                 # re-encode in ASCII character set (with risk of data loss) to avoid template rendering errors
                 if len(region_elements) >= 4:
-                    mod_id = region_elements[3].encode("ascii", "ignore").decode()
-                    mod_id = mod_id.replace(' ', '-')
-                    mod_id = mod_id.replace(':', '-')
-                    mod_id = mod_id.replace('_', '-')
+                    mod_id = ""
+                    try:
+                        mod_id = region_elements[3].decode("utf-8").encode("ascii", "ignore")
+                        mod_id = mod_id.replace(' ', '-')
+                        mod_id = mod_id.replace(':', '-')
+                        mod_id = mod_id.replace('_', '-')
+                    except AttributeError as err:
+                        mod_id = region_elements[3]
+                        mod_id = mod_id.replace(' ', '-')
+                        mod_id = mod_id.replace(':', '-')
+                        mod_id = mod_id.replace('_', '-')
                     annotation_id = "_".join(['plot', str(counter).zfill(zero_padding), region_elements[0], region_elements[1], region_elements[2], mod_id])
                 elif len(region_elements) == 3:
                     annotation_id = "_".join(['plot', str(counter).zfill(zero_padding), region_elements[0], region_elements[1], region_elements[2]])
@@ -359,7 +370,7 @@ class Soda:
         if debug:
             sys.stderr.write("Debug: Annotated regions file written to [%s]\n" % (this.temp_annotated_regions_fn))  
         this.temp_annotated_regions_fh.close()
-        
+
     def setup_browser_url(this, browserURL, debug):
         this.browser_url = browserURL
         if debug:
@@ -376,6 +387,7 @@ class Soda:
             sys.stderr.write("Debug: Browser password set to [%s]\n" % (this.browser_password))
 
     def setup_browser_authentication_type(this, useKerberosCredentials, debug):
+        sys.stderr.write("Debug: useKerberosCredentials set to [%r]\n" % (useKerberosCredentials))
         if this.browser_username and this.browser_password:
             this.browser_session_basic_credentials = True
             this.browser_session_kerberos_credentials = False
@@ -421,7 +433,7 @@ class Soda:
                 region_id = region_obj['id']
                 this.region_objs.append(region_obj)
                 this.generate_pdf_from_annotated_region(region_obj, region_id, debug)
-
+    
     def generate_pdf_url_response(this, pdf_url, credentials, enc_position_str):
         try:
             s = create_retriable_session()
@@ -434,7 +446,7 @@ class Soda:
         except requests.exceptions.ChunkedEncodingError as err:
             sys.stderr.write("Warning: Could not retrieve PDF for region [%s]\n" % (enc_position_str))
             return None
-
+    
     def generate_pdf_hrefs(this, response_text, debug):
         browser_pdf_url_soup = bs4.BeautifulSoup(response_text, "html.parser")
         browser_pdf_url_soup_hrefs = []
@@ -482,10 +494,14 @@ class Soda:
             sys.stderr.write("Error: Access to genome browser failed\nStatus\t[%d]\nHeaders\t[%s]\nText\t[%s]" % (browser_cartdump_response.status_code, browser_cartdump_response.headers, browser_cartdump_response.text))
             sys.exit(-1)
         # get cart dump
-        browser_cartdump_response_content = browser_cartdump_response.content.decode()
+        browser_cartdump_response_content = browser_cartdump_response.content
         browser_cartdump_textSize = None # textSize
         browser_cartdump_hgt_labelWidth = None # hgt.labelWidth
-        browser_cartdump_lines = browser_cartdump_response_content.split('\n')
+        browser_cartdump_lines = []
+        try:
+            browser_cartdump_lines = browser_cartdump_response_content.split('\n')
+        except TypeError as te:
+            browser_cartdump_lines = browser_cartdump_response_content.decode().split('\n')
         for browser_cartdump_line in browser_cartdump_lines:
             try:
                 browser_cartdump_line_values = browser_cartdump_line.rstrip().split(' ')
@@ -510,7 +526,10 @@ class Soda:
         if debug:
             sys.stderr.write("Debug: Writing cart dump response content to [%s]\n" % (cart_dump_fn))
         cart_dump_fh = open(cart_dump_fn, "w")
-        cart_dump_fh.write(browser_cartdump_response_content)
+        try:
+            cart_dump_fh.write(browser_cartdump_response_content)
+        except TypeError as te:
+            cart_dump_fh.write(browser_cartdump_response_content.decode())
         cart_dump_fh.close()
         # ensure cartDump exists
         if not os.path.exists(cart_dump_fn):
@@ -770,7 +789,28 @@ class Soda:
                         continue
                 shutil.copy2(s, d)
 
-    def setup_gallery_skeleton(this, debug):
+    def setup_gallery_skeleton_for_photoswipe(this, debug):
+        # copy regions, pdfs and images folders to results dir
+        this.output_regions_dir = os.path.join(this.output_dir, os.path.basename(this.temp_regions_results_dir))
+        this.copytree(this.temp_regions_results_dir, this.output_regions_dir, debug)
+        if debug:
+            sys.stderr.write("Debug: Copied regions [%s] to [%s]\n" % (this.temp_regions_results_dir, this.output_regions_dir))
+        this.output_pdf_dir = os.path.join(this.output_dir, os.path.basename(this.temp_pdf_results_dir))
+        this.copytree(this.temp_pdf_results_dir, this.output_pdf_dir, debug)
+        if debug:
+            sys.stderr.write("Debug: Copied PDFs [%s] to [%s]\n" % (this.temp_pdf_results_dir, this.output_pdf_dir))
+        this.output_png_dir = os.path.join(this.output_dir, os.path.basename(this.temp_png_results_dir))
+        this.copytree(this.temp_png_results_dir, this.output_png_dir, debug)
+        if debug:
+            sys.stderr.write("Debug: Copied PNGs [%s] to [%s]\n" % (this.temp_png_results_dir, this.output_png_dir))        
+        # copy gallery subdirs to results dir
+        gallery_dist_dir = os.path.join(this.gallery_resources_dir, 'dist')
+        output_dist_dir = os.path.join(this.output_dir, 'dist')
+        this.copytree(gallery_dist_dir, output_dist_dir)
+        if debug:
+            sys.stderr.write("Debug: Copied gallery dist folder to output folder\n")
+
+    def setup_gallery_skeleton_for_blueimp(this, debug):
         # copy regions, pdfs and images folders to results dir
         this.output_regions_dir = os.path.join(this.output_dir, os.path.basename(this.temp_regions_results_dir))
         this.copytree(this.temp_regions_results_dir, this.output_regions_dir, debug)
@@ -805,13 +845,85 @@ class Soda:
     def setup_gallery_parameters(this, title, debug):
         this.gallery_title = title
         this.gallery_timestamp = datetime.datetime.now().replace(microsecond=0).isoformat()
-        
-    def render_gallery_index(this, debug):
+
+    def render_gallery_index_with_photoswipe_template(this, debug):
         this.setup_gallery_parameters(options.galleryTitle, debug)
         local_path = os.path.dirname(os.path.abspath(__file__))
         template_environment = jinja2.Environment(
             autoescape = False,
-            loader = jinja2.FileSystemLoader(os.path.join(local_path, 'Gallery-templates')),
+            loader = jinja2.FileSystemLoader(os.path.join(local_path, 'Gallery-templates-photoswipe')),
+            trim_blocks = False
+        )
+        template_fn = 'index.html'
+        gallery_index_fn = os.path.join(this.output_dir, 'index.html')
+        image_urls = []
+        image_widths = []
+        image_heights = []
+        thumbnail_urls = []
+        pdf_urls = []
+        external_urls = []
+        titles = []
+        descriptions = []
+        genomic_regions = []
+        for idx, region_id in enumerate(this.region_ids):
+            image_url = 'images/' + region_id + '.png'
+            identify_width_cmd = '%s -ping -format \'%%w\' %s/%s' % (this.identify_bin_fn, this.output_dir, image_url)
+            try:
+                image_width = subprocess.check_output(identify_width_cmd, shell = True)
+            except subprocess.CalledProcessError as err:
+                identify_width_result = "Error: Command '{}' returned with error (code {}): {}".format(err.cmd, err.returncode, err.output)
+                sys.stderr.write("%s\n" % (identify_width_result))
+                sys.exit(-1)
+            if debug:
+                sys.stderr.write("Debug: Image URL width [%s]\n" % (identify_width))
+            identify_height_cmd = '%s -ping -format \'%%h\' %s/%s' % (this.identify_bin_fn, this.output_dir, image_url)
+            try:
+                image_height = subprocess.check_output(identify_height_cmd, shell = True)
+            except subprocess.CalledProcessError as err:
+                identify_height_result = "Error: Command '{}' returned with error (code {}): {}".format(err.cmd, err.returncode, err.output)
+                sys.stderr.write("%s\n" % (identify_height_result))
+                sys.exit(-1)
+            if debug:
+                sys.stderr.write("Debug: Image URL height [%s]\n" % (identify_height))
+            image_urls.append(image_url)
+            image_widths.append(int(image_width))
+            image_heights.append(int(image_height))
+            thumbnail_urls.append('images/thumbnails/' + region_id + '.png')
+            pdf_urls.append('pdfs/' + region_id + '.pdf')
+            region_obj = this.region_objs[idx]
+            external_urls.append(this.browser_url + '/cgi-bin/hgTracks?db=' + this.browser_build_id + '&position=' + region_obj['chrom'] + '%3A' + region_obj['start'] + '-' + region_obj['stop'] + '&hgsid=' + this.browser_session_id)
+            description_components = ['[' + this.browser_build_id + ']', region_obj['chrom'] + ":" + region_obj['start'] + '-' + region_obj['stop']]
+            id_components = region_id.split("_")
+            if len(id_components) > 5:
+                description_components.append(id_components[5])
+                titles.append(id_components[5])
+            else:
+                titles.append(region_id)
+            description = ' '.join(description_components)
+            descriptions.append(description)
+            genomic_region = region_obj['chrom'] + ' : ' + region_obj['start'] + ' - ' + region_obj['stop']
+            genomic_regions.append(genomic_region)
+            
+        render_context = {
+            'title' : this.gallery_title,
+            'timestamp' : this.gallery_timestamp,
+            'image_data' : zip(image_urls, image_widths, image_heights, thumbnail_urls, pdf_urls, external_urls, titles, descriptions, genomic_regions)
+        }
+        with open(gallery_index_fn, "w") as gallery_index_fh:
+            html = template_environment.get_template(template_fn).render(render_context).encode('utf-8')
+            try:
+                gallery_index_fh.write(html)
+            except TypeError as te:
+                gallery_index_fh.write(html.decode())
+        if debug:
+            sys.stderr.write("Debug: Wrote rendered gallery index file [%s]\n" % (gallery_index_fn))
+        
+    def render_gallery_index_with_blueimp_template(this, debug):
+        this.setup_gallery_parameters(options.galleryTitle, debug)
+        local_path = os.path.dirname(os.path.abspath(__file__))
+        template_environment = jinja2.Environment(
+            autoescape = False,
+            loader = jinja2.FileSystemLoader(os.path.join(local_path, 'Gallery-templates-blueimp')),
             trim_blocks = False
         )
         template_fn = 'index.html'
@@ -846,9 +958,12 @@ class Soda:
             'timestamp' : this.gallery_timestamp,
             'image_data' : zip(image_urls, thumbnail_urls, pdf_urls, external_urls, titles, descriptions, genomic_regions)
         }
-        with open(gallery_index_fn, "wb") as gallery_index_fh:
+        with open(gallery_index_fn, "w") as gallery_index_fh:
             html = template_environment.get_template(template_fn).render(render_context).encode('utf-8')
-            gallery_index_fh.write(html)
+            try:
+                gallery_index_fh.write(html)
+            except TypeError as te:
+                gallery_index_fh.write(html.decode())
         if debug:
             sys.stderr.write("Debug: Wrote rendered gallery index file [%s]\n" % (gallery_index_fn))
 
@@ -880,7 +995,12 @@ def main():
     s.setup_output_dir(options.outputDir, options.verbose)
     s.ensure_regions_fn(options.regionsFn, options.verbose)
     if not options.gallerySrcDir:
-        options.gallerySrcDir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'Gallery')
+        if options.galleryMode == 'blueimp':
+            options.gallerySrcDir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'Gallery-blueimp')
+        elif options.galleryMode == 'photoswipe':
+            options.gallerySrcDir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'Gallery-photoswipe')
+        else:
+            raise ValueError("Error: Please specify gallery mode from 'blueimp' or 'photoswipe' [{}]".format(options.galleryMode))
     s.ensure_gallery_src_dir(options.gallerySrcDir, options.verbose)
     if not options.octiconsSrcDir:
         options.octiconsSrcDir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'octicons')
@@ -905,8 +1025,14 @@ def main():
     s.generate_pdfs_from_annotated_regions(options.verbose)
     s.generate_pngs_from_pdfs(options.verbose)
     s.generate_thumbnails_from_pngs(options.verbose)
-    s.setup_gallery_skeleton(options.verbose)
-    s.render_gallery_index(options.verbose)
+    if options.galleryMode == 'blueimp':
+        s.setup_gallery_skeleton_for_blueimp(options.verbose)
+        s.render_gallery_index_with_blueimp_template(options.verbose)
+    elif options.galleryMode == 'photoswipe':
+        s.setup_gallery_skeleton_for_photoswipe(options.verbose)
+        s.render_gallery_index_with_photoswipe_template(options.verbose)
+    else:
+        raise ValueError("Error: Please specify gallery mode from 'blueimp' or 'photoswipe' [{}]".format(options.galleryMode))
     s.breakdown_temp_dir(options.verbose)
 
 s = Soda()

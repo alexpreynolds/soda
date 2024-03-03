@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html style="scrollbar-width: none; -ms-overflow-style: none;">
   <head>
-    <meta charset="utf-8"/>
-    <link rel="stylesheet" href="css/blueimp-gallery.min.css">
-    <link rel="stylesheet" href="octicons/build/font/octicons.css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <link rel="stylesheet" href="css/blueimp-gallery.min.css" />
+    <link rel="stylesheet" href="octicons/build/font/octicons.css" />
     <style>
 
     body {
@@ -177,6 +178,7 @@ document.getElementById('links').onclick = function (event) {
     options = {
       index: link,
       event: event,
+      fullscreen: false,
       onslide: function (index, slide) {
         self = this;
         var initialize_additional = function (index, data, klass, self) {
