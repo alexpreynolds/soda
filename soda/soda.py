@@ -38,7 +38,7 @@ import re
 import subprocess
 import jinja2
 import pdfrw
-import ucsc_pdf_bbox_parser
+import soda.ucsc_pdf_bbox_parser
 import time
 import datetime
 

@@ -160,13 +160,15 @@ Use this option if access to your custom browser instance requires a Kerberos ti
 
 Use `-v` or `--verbose` to print debug messages, which may be useful for automation or debugging.
 
+Use the `-m` option to specify the gallery framework. The default is `photoswipe`; alternatively, use `blueimp` to generate a blueimp-backed gallery.
+
 ## Credits
 
 The general "soda" gallery tool has been authored in various `bash`- and Perl-flavored incarnations since 2008 by primary authors Richard Sandstrom and Scott Kuehn, with modifications over time by Bob Thurman, Jay Hesselberth, Richard Humbert, Brady Miller and Alex Reynolds.
 
 This Python rewrite and new functionality were authored by Alex Reynolds.
 
-This tool uses the [blueimp Gallery](https://github.com/blueimp/Gallery) and [Github octicons](https://github.com/primer/octicons) projects, both of which are MIT-licensed.
+This tool uses the [PhotoSwipe](https://github.com/dimsemenov/photoswipe), [blueimp Gallery](https://github.com/blueimp/Gallery) and [Github octicons](https://github.com/primer/octicons) projects, which are MIT-licensed.
 
 ## So what's up with the name?
 
