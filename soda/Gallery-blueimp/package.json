@@ -41,9 +41,9 @@
     "eslint-plugin-prettier": "4",
     "jquery": "1",
     "prettier": "2",
-    "stylelint": "13",
+    "stylelint": "16",
     "stylelint-config-prettier": "8",
-    "stylelint-config-recommended": "5",
+    "stylelint-config-recommended": "14",
     "uglify-js": "3"
   },
   "stylelint": {
