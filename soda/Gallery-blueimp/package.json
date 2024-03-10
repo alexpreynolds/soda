@@ -39,7 +39,7 @@
     "eslint-config-prettier": "8",
     "eslint-plugin-jsdoc": "36",
     "eslint-plugin-prettier": "4",
-    "jquery": "1",
+    "jquery": "3",
     "prettier": "2",
     "stylelint": "13",
     "stylelint-config-prettier": "8",
