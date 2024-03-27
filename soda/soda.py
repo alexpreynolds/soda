@@ -43,7 +43,7 @@ import time
 import datetime
 
 default_title = "Soda Gallery"
-default_genome_browser_url = "https://gb1.altiusinstitute.org"
+default_genome_browser_url = "https://genome.ucsc.edu"
 default_genome_browser_username = None
 default_genome_browser_password = None
 default_verbosity = False
@@ -387,7 +387,8 @@ class Soda:
             sys.stderr.write("Debug: Browser password set to [%s]\n" % (this.browser_password))
 
     def setup_browser_authentication_type(this, useKerberosCredentials, debug):
-        sys.stderr.write("Debug: useKerberosCredentials set to [%r]\n" % (useKerberosCredentials))
+        if debug:
+            sys.stderr.write("Debug: useKerberosCredentials set to [%r]\n" % (useKerberosCredentials))
         if this.browser_username and this.browser_password:
             this.browser_session_basic_credentials = True
             this.browser_session_kerberos_credentials = False
@@ -871,22 +872,22 @@ class Soda:
             image_width = None
             try:
                 image_width = subprocess.check_output(identify_width_cmd, shell = True)
+                if debug:
+                    sys.stderr.write("Debug: Image URL width [%s]\n" % (image_width))
             except subprocess.CalledProcessError as err:
                 identify_width_result = "Error: Command '{}' returned with error (code {}): {}".format(err.cmd, err.returncode, err.output)
                 sys.stderr.write("%s\n" % (identify_width_result))
                 sys.exit(-1)
-            if debug:
-                sys.stderr.write("Debug: Image URL width [%s]\n" % (image_width))
             identify_height_cmd = '%s -ping -format \'%%h\' %s/%s' % (this.identify_bin_fn, this.output_dir, image_url)
             image_height = None
             try:
                 image_height = subprocess.check_output(identify_height_cmd, shell = True)
+                if debug:
+                    sys.stderr.write("Debug: Image URL height [%s]\n" % (image_height))
             except subprocess.CalledProcessError as err:
                 identify_height_result = "Error: Command '{}' returned with error (code {}): {}".format(err.cmd, err.returncode, err.output)
                 sys.stderr.write("%s\n" % (identify_height_result))
                 sys.exit(-1)
-            if debug:
-                sys.stderr.write("Debug: Image URL height [%s]\n" % (image_height))
             image_urls.append(image_url)
             image_widths.append(int(image_width))
             image_heights.append(int(image_height))

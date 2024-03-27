@@ -7,7 +7,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="soda-gallery",
-    version="1.1.0",
+    version="1.2.0",
     author="Alex Reynolds",
     author_email="alexpreynolds@gmail.com",
     description="Python-based UCSC genome browser gallery generator",
@@ -15,7 +15,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     install_requires=[
         "requests>=2.25.1",
-        "certifi>=2021.5.30",
+        "certifi>=2024.2.2",
         "beautifulsoup4>=4.9.3",
         "Jinja2>=3.0.1",
         "pdfminer>=20191125",
