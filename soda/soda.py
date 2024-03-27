@@ -38,12 +38,12 @@ import re
 import subprocess
 import jinja2
 import pdfrw
-import soda.ucsc_pdf_bbox_parser
+import ucsc_pdf_bbox_parser
 import time
 import datetime
 
 default_title = "Soda Gallery"
-default_genome_browser_url = "https://genome.ucsc.edu"
+default_genome_browser_url = "https://gb1.altiusinstitute.org"
 default_genome_browser_username = None
 default_genome_browser_password = None
 default_verbosity = False
