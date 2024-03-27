@@ -868,6 +868,7 @@ class Soda:
         for idx, region_id in enumerate(this.region_ids):
             image_url = 'images/' + region_id + '.png'
             identify_width_cmd = '%s -ping -format \'%%w\' %s/%s' % (this.identify_bin_fn, this.output_dir, image_url)
+            image_width = None
             try:
                 image_width = subprocess.check_output(identify_width_cmd, shell = True)
             except subprocess.CalledProcessError as err:
@@ -875,8 +876,9 @@ class Soda:
                 sys.stderr.write("%s\n" % (identify_width_result))
                 sys.exit(-1)
             if debug:
-                sys.stderr.write("Debug: Image URL width [%s]\n" % (identify_width))
+                sys.stderr.write("Debug: Image URL width [%s]\n" % (image_width))
             identify_height_cmd = '%s -ping -format \'%%h\' %s/%s' % (this.identify_bin_fn, this.output_dir, image_url)
+            image_height = None
             try:
                 image_height = subprocess.check_output(identify_height_cmd, shell = True)
             except subprocess.CalledProcessError as err:
@@ -884,7 +886,7 @@ class Soda:
                 sys.stderr.write("%s\n" % (identify_height_result))
                 sys.exit(-1)
             if debug:
-                sys.stderr.write("Debug: Image URL height [%s]\n" % (identify_height))
+                sys.stderr.write("Debug: Image URL height [%s]\n" % (image_height))
             image_urls.append(image_url)
             image_widths.append(int(image_width))
             image_heights.append(int(image_height))
