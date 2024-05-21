@@ -1,4 +1,4 @@
-requests==2.25.1
+requests==2.32.0
 certifi==2024.2.2
 beautifulsoup4==4.9.3
 Jinja2==3.0.1
